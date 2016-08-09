@@ -703,6 +703,8 @@ struct hostapd_config {
 
 	struct wpabuf *lci;
 	struct wpabuf *civic;
+
+    int force_40mhz; // force to 40MHz
 };
 
 

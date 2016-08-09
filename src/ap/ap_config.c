@@ -192,6 +192,8 @@ struct hostapd_config * hostapd_config_defaults(void)
 	conf->acs_num_scans = 5;
 #endif /* CONFIG_ACS */
 
+    conf->force_40mhz = 0;
+
 	return conf;
 }
 

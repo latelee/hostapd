@@ -3486,7 +3486,10 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				WLAN_RRM_CAPS_NEIGHBOR_REPORT;
 	} else if (os_strcmp(buf, "gas_address3") == 0) {
 		bss->gas_address3 = atoi(pos);
-	} else {
+	} else  if (os_strcmp(buf, "force_40mhz") == 0) {
+		conf->force_40mhz = atoi(pos);
+	
+    } else {
 		wpa_printf(MSG_ERROR,
 			   "Line %d: unknown configuration item '%s'",
 			   line, buf);

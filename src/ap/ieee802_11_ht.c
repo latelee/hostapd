@@ -247,6 +247,9 @@ void hostapd_2040_coex_action(struct hostapd_data *hapd,
 	if (len < IEEE80211_HDRLEN + 2 + sizeof(*bc_ie))
 		return;
 
+    if (iface->conf->force_40mhz)
+        return;
+
 	bc_ie = (struct ieee80211_2040_bss_coex_ie *) data;
 	if (bc_ie->element_id != WLAN_EID_20_40_BSS_COEXISTENCE ||
 	    bc_ie->length < 1) {
