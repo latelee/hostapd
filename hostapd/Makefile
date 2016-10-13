@@ -100,6 +100,11 @@ NEED_SHA1=y
 OBJS += ../src/drivers/drivers.o
 CFLAGS += -DHOSTAPD
 
+ifdef CONFIG_TAXONOMY
+CFLAGS += -DCONFIG_TAXONOMY
+OBJS += ../src/ap/taxonomy.o
+endif
+
 ifdef CONFIG_MODULE_TESTS
 CFLAGS += -DCONFIG_MODULE_TESTS
 OBJS += hapd_module_tests.o
@@ -298,6 +303,13 @@ OBJS += ../src/common/sae.o
 NEED_ECC=y
 NEED_DH_GROUPS=y
 NEED_AP_MLME=y
+endif
+
+ifdef CONFIG_FILS
+CFLAGS += -DCONFIG_FILS
+NEED_CRC32=y
+NEED_SHA384=y
+NEED_AES_SIV=y
 endif
 
 ifdef CONFIG_WNM
@@ -772,6 +784,9 @@ ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += ../src/crypto/aes-cbc.o
 endif
 endif
+ifdef NEED_AES_SIV
+AESOBJS += ../src/crypto/aes-siv.o
+endif
 ifdef NEED_AES_DEC
 ifdef CONFIG_INTERNAL_AES
 AESOBJS += ../src/crypto/aes-internal-dec.o
@@ -887,6 +902,10 @@ endif
 
 ifdef NEED_ECC
 CFLAGS += -DCONFIG_ECC
+endif
+
+ifdef NEED_CRC32
+OBJS += ../src/utils/crc32.o
 endif
 
 ifdef CONFIG_NO_RANDOM_POOL

@@ -1117,6 +1117,20 @@ static int hostapd_ctrl_iface_get_key_mgmt(struct hostapd_data *hapd,
 		pos += ret;
 	}
 #endif /* CONFIG_SAE */
+#ifdef CONFIG_FILS
+	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256) {
+		ret = os_snprintf(pos, end - pos, "FT-FILS-SHA256 ");
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384) {
+		ret = os_snprintf(pos, end - pos, "FT-FILS-SHA384 ");
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+#endif /* CONFIG_FILS */
 #endif /* CONFIG_IEEE80211R */
 #ifdef CONFIG_IEEE80211W
 	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_PSK_SHA256) {
@@ -1154,6 +1168,20 @@ static int hostapd_ctrl_iface_get_key_mgmt(struct hostapd_data *hapd,
 			return pos - buf;
 		pos += ret;
 	}
+#ifdef CONFIG_FILS
+	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_FILS_SHA256) {
+		ret = os_snprintf(pos, end - pos, "FILS-SHA256 ");
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+	if (hapd->conf->wpa_key_mgmt & WPA_KEY_MGMT_FILS_SHA384) {
+		ret = os_snprintf(pos, end - pos, "FILS-SHA384 ");
+		if (os_snprintf_error(end - pos, ret))
+			return pos - buf;
+		pos += ret;
+	}
+#endif /* CONFIG_FILS */
 
 	if (pos > buf && *(pos - 1) == ' ') {
 		*(pos - 1) = '\0';
@@ -2040,6 +2068,9 @@ static int hostapd_ctrl_iface_track_sta_list(struct hostapd_data *hapd,
 	struct hostapd_sta_info *info;
 	struct os_reltime now;
 
+	if (!iface->num_sta_seen)
+		return 0;
+
 	sta_track_expire(iface, 0);
 
 	pos = buf;
@@ -2364,6 +2395,11 @@ static int hostapd_ctrl_iface_receive_process(struct hostapd_data *hapd,
 	} else if (os_strncmp(buf, "DISASSOCIATE ", 13) == 0) {
 		if (hostapd_ctrl_iface_disassociate(hapd, buf + 13))
 			reply_len = -1;
+#ifdef CONFIG_TAXONOMY
+	} else if (os_strncmp(buf, "SIGNATURE ", 10) == 0) {
+		reply_len = hostapd_ctrl_iface_signature(hapd, buf + 10,
+							 reply, reply_size);
+#endif /* CONFIG_TAXONOMY */
 	} else if (os_strncmp(buf, "POLL_STA ", 9) == 0) {
 		if (hostapd_ctrl_iface_poll_sta(hapd, buf + 9))
 			reply_len = -1;

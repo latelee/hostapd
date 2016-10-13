@@ -574,6 +574,7 @@ struct wpa_supplicant {
 	struct wpa_radio_work *scan_work;
 	int scanning;
 	int sched_scanning;
+	unsigned int sched_scan_stop_req:1;
 	int new_connection;
 
 	int eapol_received; /* number of EAPOL packets received after the
@@ -1023,7 +1024,10 @@ struct wpa_supplicant {
 	struct l2_packet_data *l2_test;
 	unsigned int extra_roc_dur;
 	enum wpa_supplicant_test_failure test_failure;
+	unsigned int reject_btm_req_reason;
 	unsigned int p2p_go_csa_on_inv:1;
+	unsigned int ignore_auth_resp:1;
+	unsigned int ignore_assoc_disallow:1;
 #endif /* CONFIG_TESTING_OPTIONS */
 
 	struct wmm_ac_assoc_data *wmm_ac_assoc_info;
@@ -1047,7 +1051,6 @@ struct wpa_supplicant {
 		enum mbo_non_pref_chan_reason reason;
 		u8 oper_class;
 		u8 chan;
-		u8 reason_detail;
 		u8 preference;
 	} *non_pref_chan;
 	size_t non_pref_chan_num;
@@ -1107,6 +1110,8 @@ void wpa_supplicant_cancel_auth_timeout(struct wpa_supplicant *wpa_s);
 void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 				   int reason_code);
 
+struct wpa_ssid * wpa_supplicant_add_network(struct wpa_supplicant *wpa_s);
+int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id);
 void wpa_supplicant_enable_network(struct wpa_supplicant *wpa_s,
 				   struct wpa_ssid *ssid);
 void wpa_supplicant_disable_network(struct wpa_supplicant *wpa_s,
@@ -1162,6 +1167,7 @@ int disallowed_bssid(struct wpa_supplicant *wpa_s, const u8 *bssid);
 int disallowed_ssid(struct wpa_supplicant *wpa_s, const u8 *ssid,
 		    size_t ssid_len);
 void wpas_request_connection(struct wpa_supplicant *wpa_s);
+void wpas_request_disconnection(struct wpa_supplicant *wpa_s);
 int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen);
 int wpas_update_random_addr(struct wpa_supplicant *wpa_s, int style);
 int wpas_update_random_addr_disassoc(struct wpa_supplicant *wpa_s);
@@ -1199,6 +1205,8 @@ size_t wpas_mbo_ie_bss_trans_reject(struct wpa_supplicant *wpa_s, u8 *pos,
 				    size_t len,
 				    enum mbo_transition_reject_reason reason);
 void wpas_mbo_update_cell_capa(struct wpa_supplicant *wpa_s, u8 mbo_cell_capa);
+struct wpabuf * mbo_build_anqp_buf(struct wpa_supplicant *wpa_s,
+				   struct wpa_bss *bss);
 
 /**
  * wpa_supplicant_ctrl_iface_ctrl_rsp_handle - Handle a control response

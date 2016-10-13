@@ -636,8 +636,7 @@ hostapd_parse_radius_attr(const char *value)
 }
 
 
-static int hostapd_parse_das_client(struct hostapd_bss_config *bss,
-				    const char *val)
+static int hostapd_parse_das_client(struct hostapd_bss_config *bss, char *val)
 {
 	char *secret;
 
@@ -645,7 +644,7 @@ static int hostapd_parse_das_client(struct hostapd_bss_config *bss,
 	if (secret == NULL)
 		return -1;
 
-	secret++;
+	*secret++ = '\0';
 
 	if (hostapd_parse_ip_addr(val, &bss->radius_das_client_addr))
 		return -1;
@@ -711,6 +710,18 @@ static int hostapd_config_parse_key_mgmt(int line, const char *value)
 		else if (os_strcmp(start, "WPA-EAP-SUITE-B-192") == 0)
 			val |= WPA_KEY_MGMT_IEEE8021X_SUITE_B_192;
 #endif /* CONFIG_SUITEB192 */
+#ifdef CONFIG_FILS
+		else if (os_strcmp(start, "FILS-SHA256") == 0)
+			val |= WPA_KEY_MGMT_FILS_SHA256;
+		else if (os_strcmp(start, "FILS-SHA384") == 0)
+			val |= WPA_KEY_MGMT_FILS_SHA384;
+#ifdef CONFIG_IEEE80211R
+		else if (os_strcmp(start, "FT-FILS-SHA256") == 0)
+			val |= WPA_KEY_MGMT_FT_FILS_SHA256;
+		else if (os_strcmp(start, "FT-FILS-SHA384") == 0)
+			val |= WPA_KEY_MGMT_FT_FILS_SHA384;
+#endif /* CONFIG_IEEE80211R */
+#endif /* CONFIG_FILS */
 		else {
 			wpa_printf(MSG_ERROR, "Line %d: invalid key_mgmt '%s'",
 				   line, start);
@@ -2560,6 +2571,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		bss->pmk_r1_push = atoi(pos);
 	} else if (os_strcmp(buf, "ft_over_ds") == 0) {
 		bss->ft_over_ds = atoi(pos);
+	} else if (os_strcmp(buf, "ft_psk_generate_local") == 0) {
+		bss->ft_psk_generate_local = atoi(pos);
 #endif /* CONFIG_IEEE80211R */
 #ifndef CONFIG_NO_CTRL_IFACE
 	} else if (os_strcmp(buf, "ctrl_interface") == 0) {
@@ -2896,6 +2909,8 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 		conf->vht_oper_centr_freq_seg1_idx = atoi(pos);
 	} else if (os_strcmp(buf, "vendor_vht") == 0) {
 		bss->vendor_vht = atoi(pos);
+	} else if (os_strcmp(buf, "use_sta_nsts") == 0) {
+		bss->use_sta_nsts = atoi(pos);
 #endif /* CONFIG_IEEE80211AC */
 	} else if (os_strcmp(buf, "max_listen_interval") == 0) {
 		bss->max_listen_interval = atoi(pos);
@@ -3486,9 +3501,22 @@ static int hostapd_config_fill(struct hostapd_config *conf,
 				WLAN_RRM_CAPS_NEIGHBOR_REPORT;
 	} else if (os_strcmp(buf, "gas_address3") == 0) {
 		bss->gas_address3 = atoi(pos);
+	} else if (os_strcmp(buf, "ftm_responder") == 0) {
+		bss->ftm_responder = atoi(pos);
+	} else if (os_strcmp(buf, "ftm_initiator") == 0) {
+		bss->ftm_initiator = atoi(pos);
+#ifdef CONFIG_FILS
+	} else if (os_strcmp(buf, "fils_cache_id") == 0) {
+		if (hexstr2bin(pos, bss->fils_cache_id, FILS_CACHE_ID_LEN)) {
+			wpa_printf(MSG_ERROR,
+				   "Line %d: Invalid fils_cache_id '%s'",
+				   line, pos);
+			return 1;
+		}
+		bss->fils_cache_id_set = 1;
+#endif /* CONFIG_FILS */
 	} else  if (os_strcmp(buf, "force_40mhz") == 0) {
 		conf->force_40mhz = atoi(pos);
-	
     } else {
 		wpa_printf(MSG_ERROR,
 			   "Line %d: unknown configuration item '%s'",

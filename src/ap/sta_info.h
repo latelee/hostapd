@@ -52,7 +52,6 @@ struct mbo_non_pref_chan_info {
 	u8 op_class;
 	u8 pref;
 	u8 reason_code;
-	u8 reason_detail;
 	u8 num_channels;
 	u8 channels[];
 };
@@ -214,6 +213,11 @@ struct sta_info {
 			      * received, starting from the Length field */
 
 	u8 rrm_enabled_capa[5];
+
+#ifdef CONFIG_TAXONOMY
+	struct wpabuf *probe_ie_taxonomy;
+	struct wpabuf *assoc_ie_taxonomy;
+#endif /* CONFIG_TAXONOMY */
 };
 
 

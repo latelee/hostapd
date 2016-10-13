@@ -116,12 +116,19 @@ def test_mbo_supp_oper_classes(dev, apdev):
               ("BD", bd, bd2, bd5, False),
               ("KZ", kz, kz2, kz5, False) ]
     for country, expected, res2, res5, inc5 in tests:
-        if res2 != expected:
+        # For now, allow operating class 129 to be missing since not all
+        # installed regdb files include the 160 MHz channels.
+        expected2 = expected.replace('808182', '8082')
+        # For now, allow operating classes 121-123 to be missing since not all
+        # installed regdb files include the related US DFS channels.
+        expected2 = expected2.replace('78797a7b7c', '787c')
+        if res2 != expected and res2 != expected2:
             raise Exception("Unexpected supp_op_class string (country=%s, 2.4 GHz): %s (expected: %s)" % (country, res2, expected))
-        if inc5 and res5 != expected:
+        if inc5 and res5 != expected and res5 != expected2:
             raise Exception("Unexpected supp_op_class string (country=%s, 5 GHz): %s (expected: %s)" % (country, res5, expected))
 
 def test_mbo_assoc_disallow(dev, apdev, params):
+    """MBO and association disallowed"""
     hapd1 = hostapd.add_ap(apdev[0], { "ssid": "MBO", "mbo": "1" })
     hapd2 = hostapd.add_ap(apdev[1], { "ssid": "MBO", "mbo": "1" })
 
@@ -147,7 +154,7 @@ def test_mbo_assoc_disallow(dev, apdev, params):
                            "wlan.fc.type_subtype == 0x00",
                            display=['frame.time'], wait=False)
 
-    logger.debug("Allow associations to AP1 and disallow assications to AP2")
+    logger.debug("Allow associations to AP1 and disallow associations to AP2")
     if "OK" not in hapd1.request("SET mbo_assoc_disallow 0"):
         raise Exception("Failed to set mbo_assoc_disallow for AP1")
     if "OK" not in hapd2.request("SET mbo_assoc_disallow 1"):
@@ -166,6 +173,37 @@ def test_mbo_assoc_disallow(dev, apdev, params):
                      filter, wait=False)
     if "Destination address: " + hapd2.own_addr() in out:
         raise Exception("Association request sent to disallowed AP 2")
+
+def test_mbo_assoc_disallow_ignore(dev, apdev):
+    """MBO and ignoring disallowed association"""
+    try:
+        _test_mbo_assoc_disallow_ignore(dev, apdev)
+    finally:
+        dev[0].request("SCAN_INTERVAL 5")
+
+def _test_mbo_assoc_disallow_ignore(dev, apdev):
+    hapd1 = hostapd.add_ap(apdev[0], { "ssid": "MBO", "mbo": "1" })
+    if "OK" not in hapd1.request("SET mbo_assoc_disallow 1"):
+        raise Exception("Failed to set mbo_assoc_disallow for AP1")
+
+    if "OK" not in dev[0].request("SCAN_INTERVAL 1"):
+        raise Exception("Failed to set scan interval")
+    dev[0].connect("MBO", key_mgmt="NONE", scan_freq="2412", wait_connect=False)
+    ev = dev[0].wait_event(["CTRL-EVENT-NETWORK-NOT-FOUND"], timeout=10)
+    if ev is None:
+        raise Exception("CTRL-EVENT-NETWORK-NOT-FOUND not seen")
+
+    if "OK" not in dev[0].request("SET ignore_assoc_disallow 1"):
+        raise Exception("Failed to set ignore_assoc_disallow")
+    ev = dev[0].wait_event(["CTRL-EVENT-ASSOC-REJECT"], timeout=10)
+    if ev is None:
+        raise Exception("CTRL-EVENT-ASSOC-REJECT not seen")
+    if "status_code=17" not in ev:
+        raise Exception("Unexpected association reject reason: " + ev)
+
+    if "OK" not in hapd1.request("SET mbo_assoc_disallow 0"):
+        raise Exception("Failed to set mbo_assoc_disallow for AP1")
+    dev[0].wait_connected()
 
 @remote_compatible
 def test_mbo_cell_capa_update(dev, apdev):
@@ -261,7 +299,7 @@ def test_mbo_non_pref_chan(dev, apdev):
         raise Exception("Invalid non_pref_chan value accepted")
     if "OK" not in dev[0].request("SET non_pref_chan 81:7:200:3"):
         raise Exception("Failed to set non-preferred channel list")
-    if "OK" not in dev[0].request("SET non_pref_chan 81:7:200:1:123 81:9:100:2"):
+    if "OK" not in dev[0].request("SET non_pref_chan 81:7:200:1 81:9:100:2"):
         raise Exception("Failed to set non-preferred channel list")
 
     dev[0].connect(ssid, key_mgmt="NONE", scan_freq="2412")
@@ -271,11 +309,11 @@ def test_mbo_non_pref_chan(dev, apdev):
     logger.debug("STA: " + str(sta))
     if 'non_pref_chan[0]' not in sta:
         raise Exception("Missing non_pref_chan[0] value (assoc)")
-    if sta['non_pref_chan[0]'] != '81:200:1:123:7':
+    if sta['non_pref_chan[0]'] != '81:200:1:7':
         raise Exception("Unexpected non_pref_chan[0] value (assoc)")
     if 'non_pref_chan[1]' not in sta:
         raise Exception("Missing non_pref_chan[1] value (assoc)")
-    if sta['non_pref_chan[1]'] != '81:100:2:0:9':
+    if sta['non_pref_chan[1]'] != '81:100:2:9':
         raise Exception("Unexpected non_pref_chan[1] value (assoc)")
     if 'non_pref_chan[2]' in sta:
         raise Exception("Unexpected non_pref_chan[2] value (assoc)")
@@ -287,30 +325,26 @@ def test_mbo_non_pref_chan(dev, apdev):
     logger.debug("STA: " + str(sta))
     if 'non_pref_chan[0]' not in sta:
         raise Exception("Missing non_pref_chan[0] value (update 1)")
-    if sta['non_pref_chan[0]'] != '81:100:2:0:9':
+    if sta['non_pref_chan[0]'] != '81:100:2:9':
         raise Exception("Unexpected non_pref_chan[0] value (update 1)")
     if 'non_pref_chan[1]' in sta:
-        raise Exception("Unexpected non_pref_chan[2] value (update 1)")
+        raise Exception("Unexpected non_pref_chan[1] value (update 1)")
 
-    if "OK" not in dev[0].request("SET non_pref_chan 81:9:100:2 81:10:100:2 81:8:100:2 81:7:100:1:123 81:5:100:1:124"):
+    if "OK" not in dev[0].request("SET non_pref_chan 81:9:100:2 81:10:100:2 81:8:100:2 81:7:100:1 81:5:100:1"):
         raise Exception("Failed to update non-preferred channel list")
     time.sleep(0.1)
     sta = hapd.get_sta(addr)
     logger.debug("STA: " + str(sta))
     if 'non_pref_chan[0]' not in sta:
         raise Exception("Missing non_pref_chan[0] value (update 2)")
-    if sta['non_pref_chan[0]'] != '81:100:1:123:7':
+    if sta['non_pref_chan[0]'] != '81:100:1:7,5':
         raise Exception("Unexpected non_pref_chan[0] value (update 2)")
     if 'non_pref_chan[1]' not in sta:
         raise Exception("Missing non_pref_chan[1] value (update 2)")
-    if sta['non_pref_chan[1]'] != '81:100:1:124:5':
+    if sta['non_pref_chan[1]'] != '81:100:2:9,10,8':
         raise Exception("Unexpected non_pref_chan[1] value (update 2)")
-    if 'non_pref_chan[2]' not in sta:
-        raise Exception("Missing non_pref_chan[2] value (update 2)")
-    if sta['non_pref_chan[2]'] != '81:100:2:0:9,10,8':
+    if 'non_pref_chan[2]' in sta:
         raise Exception("Unexpected non_pref_chan[2] value (update 2)")
-    if 'non_pref_chan[3]' in sta:
-        raise Exception("Unexpected non_pref_chan[3] value (update 2)")
 
     if "OK" not in dev[0].request("SET non_pref_chan 81:5:90:2 82:14:91:2"):
         raise Exception("Failed to update non-preferred channel list")
@@ -319,11 +353,11 @@ def test_mbo_non_pref_chan(dev, apdev):
     logger.debug("STA: " + str(sta))
     if 'non_pref_chan[0]' not in sta:
         raise Exception("Missing non_pref_chan[0] value (update 3)")
-    if sta['non_pref_chan[0]'] != '81:90:2:0:5':
+    if sta['non_pref_chan[0]'] != '81:90:2:5':
         raise Exception("Unexpected non_pref_chan[0] value (update 3)")
     if 'non_pref_chan[1]' not in sta:
         raise Exception("Missing non_pref_chan[1] value (update 3)")
-    if sta['non_pref_chan[1]'] != '82:91:2:0:14':
+    if sta['non_pref_chan[1]'] != '82:91:2:14':
         raise Exception("Unexpected non_pref_chan[1] value (update 3)")
     if 'non_pref_chan[2]' in sta:
         raise Exception("Unexpected non_pref_chan[2] value (update 3)")

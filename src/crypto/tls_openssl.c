@@ -919,7 +919,7 @@ void * tls_init(const struct tls_config *conf)
 		}
 #endif /* OPENSSL_FIPS */
 #endif /* CONFIG_FIPS */
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 		SSL_load_error_strings();
 		SSL_library_init();
 #ifndef OPENSSL_NO_SHA256
@@ -1043,7 +1043,7 @@ void tls_deinit(void *ssl_ctx)
 
 	tls_openssl_ref_count--;
 	if (tls_openssl_ref_count == 0) {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 #ifndef OPENSSL_NO_ENGINE
 		ENGINE_cleanup();
 #endif /* OPENSSL_NO_ENGINE */
@@ -2334,7 +2334,7 @@ static int tls_connection_client_cert(struct tls_connection *conn,
 		return 0;
 
 #ifdef PKCS12_FUNCS
-#if OPENSSL_VERSION_NUMBER < 0x10002000L
+#if OPENSSL_VERSION_NUMBER < 0x10002000L || defined(LIBRESSL_VERSION_NUMBER)
 	/*
 	 * Clear previously set extra chain certificates, if any, from PKCS#12
 	 * processing in tls_parse_pkcs12() to allow OpenSSL to build a new
@@ -3976,7 +3976,7 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn,
 		engine_id = "pkcs11";
 
 #if defined(EAP_FAST) || defined(EAP_FAST_DYNAMIC) || defined(EAP_SERVER_FAST)
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	if (params->flags & TLS_CONN_EAP_FAST) {
 		wpa_printf(MSG_DEBUG,
 			   "OpenSSL: Use TLSv1_method() for EAP-FAST");

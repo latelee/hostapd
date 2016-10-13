@@ -14,7 +14,6 @@
 #include "common/ieee802_1x_defs.h"
 
 struct macsec_init_params;
-struct ieee802_1x_cp_conf;
 
 #define MI_LEN			12
 #define MAX_KEY_LEN		32  /* 32 bytes, 256 bits */
@@ -48,8 +47,88 @@ struct mka_key_name {
 enum mka_created_mode {
 	PSK,
 	EAP_EXCHANGE,
-	DISTRIBUTED,
-	CACHED,
+};
+
+struct data_key {
+	u8 *key;
+	int key_len;
+	struct ieee802_1x_mka_ki key_identifier;
+	enum confidentiality_offset confidentiality_offset;
+	u8 an;
+	Boolean transmits;
+	Boolean receives;
+	struct os_time created_time;
+	u32 next_pn;
+
+	/* not defined data */
+	Boolean rx_latest;
+	Boolean tx_latest;
+
+	int user;  /* FIXME: to indicate if it can be delete safely */
+
+	struct dl_list list;
+};
+
+/* TransmitSC in IEEE Std 802.1AE-2006, Figure 10-6 */
+struct transmit_sc {
+	struct ieee802_1x_mka_sci sci; /* const SCI sci */
+	Boolean transmitting; /* bool transmitting (read only) */
+
+	struct os_time created_time; /* Time createdTime */
+
+	u8 encoding_sa; /* AN encodingSA (read only) */
+	u8 enciphering_sa; /* AN encipheringSA (read only) */
+
+	/* not defined data */
+	unsigned int channel;
+
+	struct dl_list list;
+	struct dl_list sa_list;
+};
+
+/* TransmitSA in IEEE Std 802.1AE-2006, Figure 10-6 */
+struct transmit_sa {
+	Boolean in_use; /* bool inUse (read only) */
+	u32 next_pn; /* PN nextPN (read only) */
+	struct os_time created_time; /* Time createdTime */
+
+	Boolean enable_transmit; /* bool EnableTransmit */
+
+	u8 an;
+	Boolean confidentiality;
+	struct data_key *pkey;
+
+	struct transmit_sc *sc;
+	struct dl_list list; /* list entry in struct transmit_sc::sa_list */
+};
+
+/* ReceiveSC in IEEE Std 802.1AE-2006, Figure 10-6 */
+struct receive_sc {
+	struct ieee802_1x_mka_sci sci; /* const SCI sci */
+	Boolean receiving; /* bool receiving (read only) */
+
+	struct os_time created_time; /* Time createdTime */
+
+	unsigned int channel;
+
+	struct dl_list list;
+	struct dl_list sa_list;
+};
+
+/* ReceiveSA in IEEE Std 802.1AE-2006, Figure 10-6 */
+struct receive_sa {
+	Boolean enable_receive; /* bool enableReceive */
+	Boolean in_use; /* bool inUse (read only) */
+
+	u32 next_pn; /* PN nextPN (read only) */
+	u32 lowest_pn; /* PN lowestPN (read only) */
+	u8 an;
+	struct os_time created_time;
+
+	struct data_key *pkey;
+	struct receive_sc *sc; /* list entry in struct receive_sc::sa_list */
+
+	struct dl_list list;
 };
 
 struct ieee802_1x_kay_ctx {
@@ -59,34 +138,29 @@ struct ieee802_1x_kay_ctx {
 	/* abstract wpa driver interface */
 	int (*macsec_init)(void *ctx, struct macsec_init_params *params);
 	int (*macsec_deinit)(void *ctx);
+	int (*macsec_get_capability)(void *priv, enum macsec_cap *cap);
 	int (*enable_protect_frames)(void *ctx, Boolean enabled);
 	int (*set_replay_protect)(void *ctx, Boolean enabled, u32 window);
-	int (*set_current_cipher_suite)(void *ctx, const u8 *cs, size_t cs_len);
+	int (*set_current_cipher_suite)(void *ctx, u64 cs);
 	int (*enable_controlled_port)(void *ctx, Boolean enabled);
-	int (*get_receive_lowest_pn)(void *ctx, u32 channel, u8 an,
-				     u32 *lowest_pn);
-	int (*get_transmit_next_pn)(void *ctx, u32 channel, u8 an,
-				    u32 *next_pn);
-	int (*set_transmit_next_pn)(void *ctx, u32 channel, u8 an, u32 next_pn);
+	int (*get_receive_lowest_pn)(void *ctx, struct receive_sa *sa);
+	int (*get_transmit_next_pn)(void *ctx, struct transmit_sa *sa);
+	int (*set_transmit_next_pn)(void *ctx, struct transmit_sa *sa);
 	int (*get_available_receive_sc)(void *ctx, u32 *channel);
-	int (*create_receive_sc)(void *ctx, u32 channel,
-				 struct ieee802_1x_mka_sci *sci,
+	int (*create_receive_sc)(void *ctx, struct receive_sc *sc,
 				 enum validate_frames vf,
 				 enum confidentiality_offset co);
-	int (*delete_receive_sc)(void *ctx, u32 channel);
-	int (*create_receive_sa)(void *ctx, u32 channel, u8 an, u32 lowest_pn,
-				 const u8 *sak);
-	int (*enable_receive_sa)(void *ctx, u32 channel, u8 an);
-	int (*disable_receive_sa)(void *ctx, u32 channel, u8 an);
+	int (*delete_receive_sc)(void *ctx, struct receive_sc *sc);
+	int (*create_receive_sa)(void *ctx, struct receive_sa *sa);
+	int (*enable_receive_sa)(void *ctx, struct receive_sa *sa);
+	int (*disable_receive_sa)(void *ctx, struct receive_sa *sa);
 	int (*get_available_transmit_sc)(void *ctx, u32 *channel);
-	int (*create_transmit_sc)(void *ctx, u32 channel,
-				  const struct ieee802_1x_mka_sci *sci,
+	int (*create_transmit_sc)(void *ctx, struct transmit_sc *sc,
 				  enum confidentiality_offset co);
-	int (*delete_transmit_sc)(void *ctx, u32 channel);
-	int (*create_transmit_sa)(void *ctx, u32 channel, u8 an, u32 next_pn,
-				  Boolean confidentiality, const u8 *sak);
-	int (*enable_transmit_sa)(void *ctx, u32 channel, u8 an);
-	int (*disable_transmit_sa)(void *ctx, u32 channel, u8 an);
+	int (*delete_transmit_sc)(void *ctx, struct transmit_sc *sc);
+	int (*create_transmit_sa)(void *ctx, struct transmit_sa *sa);
+	int (*enable_transmit_sa)(void *ctx, struct transmit_sa *sa);
+	int (*disable_transmit_sa)(void *ctx, struct transmit_sa *sa);
 };
 
 struct ieee802_1x_kay {
@@ -126,7 +200,7 @@ struct ieee802_1x_kay {
 	Boolean is_obliged_key_server;
 	char if_name[IFNAMSIZ];
 
-	int macsec_csindex;  /*  MACsec cipher suite table index */
+	unsigned int macsec_csindex;  /* MACsec cipher suite table index */
 	int mka_algindex;  /* MKA alg table index */
 
 	u32 dist_kn;
@@ -171,7 +245,7 @@ void ieee802_1x_kay_mka_participate(struct ieee802_1x_kay *kay,
 				    Boolean status);
 int ieee802_1x_kay_new_sak(struct ieee802_1x_kay *kay);
 int ieee802_1x_kay_change_cipher_suite(struct ieee802_1x_kay *kay,
-				       int cs_index);
+				       unsigned int cs_index);
 
 int ieee802_1x_kay_set_latest_sa_attr(struct ieee802_1x_kay *kay,
 				      struct ieee802_1x_mka_ki *lki, u8 lan,
@@ -188,7 +262,5 @@ int ieee802_1x_kay_enable_tx_sas(struct ieee802_1x_kay *kay,
 int ieee802_1x_kay_enable_rx_sas(struct ieee802_1x_kay *kay,
 				 struct ieee802_1x_mka_ki *lki);
 int ieee802_1x_kay_enable_new_info(struct ieee802_1x_kay *kay);
-int ieee802_1x_kay_cp_conf(struct ieee802_1x_kay *kay,
-			   struct ieee802_1x_cp_conf *pconf);
 
 #endif /* IEEE802_1X_KAY_H */

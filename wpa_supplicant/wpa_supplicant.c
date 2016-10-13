@@ -192,7 +192,9 @@ static void wpa_supplicant_timeout(void *eloop_ctx, void *timeout_ctx)
 {
 	struct wpa_supplicant *wpa_s = eloop_ctx;
 	const u8 *bssid = wpa_s->bssid;
-	if (is_zero_ether_addr(bssid))
+	if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
+	    (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+	     wpa_s->wpa_state == WPA_ASSOCIATING))
 		bssid = wpa_s->pending_bssid;
 	wpa_msg(wpa_s, MSG_INFO, "Authentication with " MACSTR " timed out.",
 		MAC2STR(bssid));
@@ -1231,6 +1233,22 @@ int wpa_supplicant_set_suites(struct wpa_supplicant *wpa_s,
 		wpa_dbg(wpa_s, MSG_DEBUG,
 			"WPA: using KEY_MGMT 802.1X with Suite B");
 #endif /* CONFIG_SUITEB */
+#ifdef CONFIG_FILS
+#ifdef CONFIG_IEEE80211R
+	} else if (sel & WPA_KEY_MGMT_FT_FILS_SHA384) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_FT_FILS_SHA384;
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT FT-FILS-SHA384");
+	} else if (sel & WPA_KEY_MGMT_FT_FILS_SHA256) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_FT_FILS_SHA256;
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT FT-FILS-SHA256");
+#endif /* CONFIG_IEEE80211R */
+	} else if (sel & WPA_KEY_MGMT_FILS_SHA384) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_FILS_SHA384;
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT FILS-SHA384");
+	} else if (sel & WPA_KEY_MGMT_FILS_SHA256) {
+		wpa_s->key_mgmt = WPA_KEY_MGMT_FILS_SHA256;
+		wpa_dbg(wpa_s, MSG_DEBUG, "WPA: using KEY_MGMT FILS-SHA256");
+#endif /* CONFIG_FILS */
 #ifdef CONFIG_IEEE80211R
 	} else if (sel & WPA_KEY_MGMT_FT_IEEE8021X) {
 		wpa_s->key_mgmt = WPA_KEY_MGMT_FT_IEEE8021X;
@@ -1456,6 +1474,19 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx)
 		break;
 	case 6: /* Bits 48-55 */
 		break;
+	case 7: /* Bits 56-63 */
+		break;
+	case 8: /* Bits 64-71 */
+		if (wpa_s->conf->ftm_responder)
+			*pos |= 0x40; /* Bit 70 - FTM responder */
+		if (wpa_s->conf->ftm_initiator)
+			*pos |= 0x80; /* Bit 71 - FTM initiator */
+		break;
+	case 9: /* Bits 72-79 */
+#ifdef CONFIG_FILS
+		*pos |= 0x01;
+#endif /* CONFIG_FILS */
+		break;
 	}
 }
 
@@ -1463,7 +1494,7 @@ static void wpas_ext_capab_byte(struct wpa_supplicant *wpa_s, u8 *pos, int idx)
 int wpas_build_ext_capab(struct wpa_supplicant *wpa_s, u8 *buf, size_t buflen)
 {
 	u8 *pos = buf;
-	u8 len = 6, i;
+	u8 len = 10, i;
 
 	if (len < wpa_s->extended_capa_len)
 		len = wpa_s->extended_capa_len;
@@ -1901,6 +1932,11 @@ void ibss_mesh_setup_freq(struct wpa_supplicant *wpa_s,
 	if (pri_chan->flag & (HOSTAPD_CHAN_DISABLED | HOSTAPD_CHAN_NO_IR))
 		return;
 
+#ifdef CONFIG_HT_OVERRIDES
+	if (ssid->disable_ht40)
+		return;
+#endif /* CONFIG_HT_OVERRIDES */
+
 	/* Check/setup HT40+/HT40- */
 	for (j = 0; j < ARRAY_SIZE(ht40plus); j++) {
 		if (ht40plus[j] == channel) {
@@ -1925,22 +1961,16 @@ void ibss_mesh_setup_freq(struct wpa_supplicant *wpa_s,
 
 	freq->channel = pri_chan->chan;
 
-	switch (ht40) {
-	case -1:
+	if (ht40 == -1) {
 		if (!(pri_chan->flag & HOSTAPD_CHAN_HT40MINUS))
 			return;
-		freq->sec_channel_offset = -1;
-		break;
-	case 1:
+	} else {
 		if (!(pri_chan->flag & HOSTAPD_CHAN_HT40PLUS))
 			return;
-		freq->sec_channel_offset = 1;
-		break;
-	default:
-		break;
 	}
+	freq->sec_channel_offset = ht40;
 
-	if (freq->sec_channel_offset && obss_scan) {
+	if (obss_scan) {
 		struct wpa_scan_results *scan_res;
 
 		scan_res = wpa_supplicant_get_scan_results(wpa_s, NULL, 0);
@@ -2163,7 +2193,10 @@ static void wpas_start_assoc_cb(struct wpa_radio_work *work, int deinit)
 	} else {
 		wpa_msg(wpa_s, MSG_INFO, "Trying to associate with SSID '%s'",
 			wpa_ssid_txt(ssid->ssid, ssid->ssid_len));
-		os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
+		if (bss)
+			os_memcpy(wpa_s->pending_bssid, bss->bssid, ETH_ALEN);
+		else
+			os_memset(wpa_s->pending_bssid, 0, ETH_ALEN);
 	}
 	if (!wpa_s->pno)
 		wpa_supplicant_cancel_sched_scan(wpa_s);
@@ -2692,12 +2725,12 @@ void wpa_supplicant_deauthenticate(struct wpa_supplicant *wpa_s,
 		MAC2STR(wpa_s->bssid), MAC2STR(wpa_s->pending_bssid),
 		reason_code, wpa_supplicant_state_txt(wpa_s->wpa_state));
 
-	if (!is_zero_ether_addr(wpa_s->bssid))
-		addr = wpa_s->bssid;
-	else if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
-		 (wpa_s->wpa_state == WPA_AUTHENTICATING ||
-		  wpa_s->wpa_state == WPA_ASSOCIATING))
+	if (!is_zero_ether_addr(wpa_s->pending_bssid) &&
+	    (wpa_s->wpa_state == WPA_AUTHENTICATING ||
+	     wpa_s->wpa_state == WPA_ASSOCIATING))
 		addr = wpa_s->pending_bssid;
+	else if (!is_zero_ether_addr(wpa_s->bssid))
+		addr = wpa_s->bssid;
 	else if (wpa_s->wpa_state == WPA_ASSOCIATING) {
 		/*
 		 * When using driver-based BSS selection, we may not know the
@@ -2750,6 +2783,95 @@ static void wpa_supplicant_enable_one_network(struct wpa_supplicant *wpa_s,
 	 */
 	if (!wpa_s->current_ssid && !wpa_s->disconnected)
 		wpa_s->reassociate = 1;
+}
+
+
+/**
+ * wpa_supplicant_add_network - Add a new network
+ * @wpa_s: wpa_supplicant structure for a network interface
+ * Returns: The new network configuration or %NULL if operation failed
+ *
+ * This function performs the following operations:
+ * 1. Adds a new network.
+ * 2. Send network addition notification.
+ * 3. Marks the network disabled.
+ * 4. Set network default parameters.
+ */
+struct wpa_ssid * wpa_supplicant_add_network(struct wpa_supplicant *wpa_s)
+{
+	struct wpa_ssid *ssid;
+
+	ssid = wpa_config_add_network(wpa_s->conf);
+	if (!ssid)
+		return NULL;
+	wpas_notify_network_added(wpa_s, ssid);
+	ssid->disabled = 1;
+	wpa_config_set_network_defaults(ssid);
+
+	return ssid;
+}
+
+
+/**
+ * wpa_supplicant_remove_network - Remove a configured network based on id
+ * @wpa_s: wpa_supplicant structure for a network interface
+ * @id: Unique network id to search for
+ * Returns: 0 on success, or -1 if the network was not found, -2 if the network
+ * could not be removed
+ *
+ * This function performs the following operations:
+ * 1. Removes the network.
+ * 2. Send network removal notification.
+ * 3. Update internal state machines.
+ * 4. Stop any running sched scans.
+ */
+int wpa_supplicant_remove_network(struct wpa_supplicant *wpa_s, int id)
+{
+	struct wpa_ssid *ssid;
+	int was_disabled;
+
+	ssid = wpa_config_get_network(wpa_s->conf, id);
+	if (!ssid)
+		return -1;
+	wpas_notify_network_removed(wpa_s, ssid);
+
+	if (wpa_s->last_ssid == ssid)
+		wpa_s->last_ssid = NULL;
+
+	if (ssid == wpa_s->current_ssid || !wpa_s->current_ssid) {
+#ifdef CONFIG_SME
+		wpa_s->sme.prev_bssid_set = 0;
+#endif /* CONFIG_SME */
+		/*
+		 * Invalidate the EAP session cache if the current or
+		 * previously used network is removed.
+		 */
+		eapol_sm_invalidate_cached_session(wpa_s->eapol);
+	}
+
+	if (ssid == wpa_s->current_ssid) {
+		wpa_sm_set_config(wpa_s->wpa, NULL);
+		eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
+
+		if (wpa_s->wpa_state >= WPA_AUTHENTICATING)
+			wpa_s->own_disconnect_req = 1;
+		wpa_supplicant_deauthenticate(wpa_s,
+					      WLAN_REASON_DEAUTH_LEAVING);
+	}
+
+	was_disabled = ssid->disabled;
+
+	if (wpa_config_remove_network(wpa_s->conf, id) < 0)
+		return -2;
+
+	if (!was_disabled && wpa_s->sched_scanning) {
+		wpa_printf(MSG_DEBUG,
+			   "Stop ongoing sched_scan to remove network from filters");
+		wpa_supplicant_cancel_sched_scan(wpa_s);
+		wpa_supplicant_req_scan(wpa_s, 0, 0);
+	}
+
+	return 0;
 }
 
 
@@ -2913,6 +3035,7 @@ void wpa_supplicant_select_network(struct wpa_supplicant *wpa_s,
 	if (wpa_s->connect_without_scan ||
 	    wpa_supplicant_fast_associate(wpa_s) != 1) {
 		wpa_s->scan_req = NORMAL_SCAN_REQ;
+		wpas_scan_reset_sched_scan(wpa_s);
 		wpa_supplicant_req_scan(wpa_s, 0, disconnected ? 100000 : 0);
 	}
 
@@ -3272,6 +3395,13 @@ void wpa_supplicant_rx_eapol(void *ctx, const u8 *src_addr,
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "RX EAPOL from " MACSTR, MAC2STR(src_addr));
 	wpa_hexdump(MSG_MSGDUMP, "RX EAPOL", buf, len);
+
+#ifdef CONFIG_TESTING_OPTIONS
+	if (wpa_s->ignore_auth_resp) {
+		wpa_printf(MSG_INFO, "RX EAPOL - ignore_auth_resp active!");
+		return;
+	}
+#endif /* CONFIG_TESTING_OPTIONS */
 
 #ifdef CONFIG_PEERKEY
 	if (wpa_s->wpa_state > WPA_ASSOCIATED && wpa_s->current_ssid &&
@@ -6021,6 +6151,27 @@ void wpas_request_connection(struct wpa_supplicant *wpa_s)
 		wpa_supplicant_req_scan(wpa_s, 0, 0);
 	else
 		wpa_s->reattach = 0;
+}
+
+
+/**
+ * wpas_request_disconnection - Request disconnection
+ * @wpa_s: Pointer to the network interface
+ *
+ * This function is used to request disconnection from the currently connected
+ * network. This will stop any ongoing scans and initiate deauthentication.
+ */
+void wpas_request_disconnection(struct wpa_supplicant *wpa_s)
+{
+#ifdef CONFIG_SME
+	wpa_s->sme.prev_bssid_set = 0;
+#endif /* CONFIG_SME */
+	wpa_s->reassociate = 0;
+	wpa_s->disconnected = 1;
+	wpa_supplicant_cancel_sched_scan(wpa_s);
+	wpa_supplicant_cancel_scan(wpa_s);
+	wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
+	eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
 }
 
 

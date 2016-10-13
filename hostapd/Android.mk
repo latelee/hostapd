@@ -258,6 +258,13 @@ NEED_ECC=y
 NEED_DH_GROUPS=y
 endif
 
+ifdef CONFIG_FILS
+L_CFLAGS += -DCONFIG_FILS
+NEED_CRC32=y
+NEED_SHA384=y
+NEED_AES_SIV=y
+endif
+
 ifdef CONFIG_WNM
 L_CFLAGS += -DCONFIG_WNM
 OBJS += src/ap/wnm_ap.c
@@ -737,6 +744,9 @@ ifneq ($(CONFIG_TLS), openssl)
 AESOBJS += src/crypto/aes-cbc.c
 endif
 endif
+ifdef NEED_AES_SIV
+AESOBJS += src/crypto/aes-siv.c
+endif
 ifdef NEED_AES_DEC
 ifdef CONFIG_INTERNAL_AES
 AESOBJS += src/crypto/aes-internal-dec.c
@@ -850,6 +860,10 @@ endif
 
 ifdef NEED_ECC
 L_CFLAGS += -DCONFIG_ECC
+endif
+
+ifdef NEED_CRC32
+OBJS += src/utils/crc32.c
 endif
 
 ifdef CONFIG_NO_RANDOM_POOL
@@ -995,6 +1009,7 @@ endif
 LOCAL_CFLAGS := $(L_CFLAGS)
 LOCAL_SRC_FILES := $(OBJS)
 LOCAL_C_INCLUDES := $(INCLUDES)
+LOCAL_INIT_RC := hostapd.android.rc
 include $(BUILD_EXECUTABLE)
 
 endif # ifeq ($(WPA_BUILD_HOSTAPD),true)

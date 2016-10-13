@@ -374,7 +374,7 @@ static void sta_track_deinit(struct hostapd_iface *iface)
 				     list))) {
 		dl_list_del(&info->list);
 		iface->num_sta_seen--;
-		os_free(info);
+		sta_track_del(info);
 	}
 }
 
@@ -912,7 +912,6 @@ static int hostapd_setup_bss(struct hostapd_data *hapd, int first)
 		return -1;
 	}
 	hapd->started = 1;
-	dl_list_init(&hapd->nr_db);
 
 	if (!first || first == -1) {
 		u8 *addr = hapd->own_addr;
@@ -1778,7 +1777,6 @@ static int hostapd_setup_interface_complete_sync(struct hostapd_iface *iface,
 	hostapd_tx_queue_params(iface);
 
 	ap_list_init(iface);
-	dl_list_init(&iface->sta_seen);
 
 	hostapd_set_acl(hapd);
 
@@ -2002,6 +2000,7 @@ hostapd_alloc_bss_data(struct hostapd_iface *hapd_iface,
 	hapd->driver = hapd->iconf->driver;
 	hapd->ctrl_sock = -1;
 	dl_list_init(&hapd->ctrl_dst);
+	dl_list_init(&hapd->nr_db);
 
 	return hapd;
 }
@@ -2068,6 +2067,20 @@ void hostapd_interface_free(struct hostapd_iface *iface)
 }
 
 
+struct hostapd_iface * hostapd_alloc_iface(void)
+{
+	struct hostapd_iface *hapd_iface;
+
+	hapd_iface = os_zalloc(sizeof(*hapd_iface));
+	if (!hapd_iface)
+		return NULL;
+
+	dl_list_init(&hapd_iface->sta_seen);
+
+	return hapd_iface;
+}
+
+
 /**
  * hostapd_init - Allocate and initialize per-interface data
  * @config_file: Path to the configuration file
@@ -2085,7 +2098,7 @@ struct hostapd_iface * hostapd_init(struct hapd_interfaces *interfaces,
 	struct hostapd_data *hapd;
 	size_t i;
 
-	hapd_iface = os_zalloc(sizeof(*hapd_iface));
+	hapd_iface = hostapd_alloc_iface();
 	if (hapd_iface == NULL)
 		goto fail;
 
@@ -2421,7 +2434,7 @@ hostapd_iface_alloc(struct hapd_interfaces *interfaces)
 		return NULL;
 	interfaces->iface = iface;
 	hapd_iface = interfaces->iface[interfaces->count] =
-		os_zalloc(sizeof(*hapd_iface));
+		hostapd_alloc_iface();
 	if (hapd_iface == NULL) {
 		wpa_printf(MSG_ERROR, "%s: Failed to allocate memory for "
 			   "the interface", __func__);

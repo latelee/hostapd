@@ -178,6 +178,7 @@ static int wpa_supplicant_mesh_init(struct wpa_supplicant *wpa_s,
 	ifmsh->bss[0] = bss = os_zalloc(sizeof(struct hostapd_data));
 	if (!bss)
 		goto out_free;
+	dl_list_init(&bss->nr_db);
 
 	os_memcpy(bss->own_addr, wpa_s->own_addr, ETH_ALEN);
 	bss->driver = wpa_s->driver;
@@ -404,7 +405,7 @@ int wpa_supplicant_join_mesh(struct wpa_supplicant *wpa_s,
 		params.dtim_period = ssid->dtim_period;
 	else if (wpa_s->conf->dtim_period > 0)
 		params.dtim_period = wpa_s->conf->dtim_period;
-	params.max_peer_links = wpa_s->conf->max_peer_links;
+	params.conf.max_peer_links = wpa_s->conf->max_peer_links;
 
 	if (ssid->key_mgmt & WPA_KEY_MGMT_SAE) {
 		params.flags |= WPA_DRIVER_MESH_FLAG_SAE_AUTH;
@@ -414,10 +415,10 @@ int wpa_supplicant_join_mesh(struct wpa_supplicant *wpa_s,
 
 	if (wpa_s->conf->user_mpm) {
 		params.flags |= WPA_DRIVER_MESH_FLAG_USER_MPM;
-		params.conf.flags &= ~WPA_DRIVER_MESH_CONF_FLAG_AUTO_PLINKS;
+		params.conf.auto_plinks = 0;
 	} else {
 		params.flags |= WPA_DRIVER_MESH_FLAG_DRIVER_MPM;
-		params.conf.flags |= WPA_DRIVER_MESH_CONF_FLAG_AUTO_PLINKS;
+		params.conf.auto_plinks = 1;
 	}
 	params.conf.peer_link_timeout = wpa_s->conf->mesh_max_inactivity;
 
@@ -438,6 +439,8 @@ int wpa_supplicant_join_mesh(struct wpa_supplicant *wpa_s,
 		params.ies = wpa_s->ifmsh->mconf->rsn_ie;
 		params.ie_len = wpa_s->ifmsh->mconf->rsn_ie_len;
 		params.basic_rates = wpa_s->ifmsh->basic_rates;
+		params.conf.flags |= WPA_DRIVER_MESH_CONF_FLAG_HT_OP_MODE;
+		params.conf.ht_opmode = wpa_s->ifmsh->bss[0]->iface->ht_op_mode;
 	}
 
 	wpa_msg(wpa_s, MSG_INFO, "joining mesh %s",

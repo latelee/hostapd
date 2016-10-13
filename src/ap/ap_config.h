@@ -339,6 +339,7 @@ struct hostapd_bss_config {
 	struct ft_remote_r1kh *r1kh_list;
 	int pmk_r1_push;
 	int ft_over_ds;
+	int ft_psk_generate_local;
 #endif /* CONFIG_IEEE80211R */
 
 	char *ctrl_interface; /* directory for UNIX domain sockets */
@@ -582,6 +583,7 @@ struct hostapd_bss_config {
 	u8 radio_measurements[RRM_CAPABILITIES_IE_LEN];
 
 	int vendor_vht;
+	int use_sta_nsts;
 
 	char *no_probe_resp_if_seen_on;
 	char *no_auth_if_seen_on;
@@ -591,6 +593,14 @@ struct hostapd_bss_config {
 #ifdef CONFIG_MBO
 	int mbo_enabled;
 #endif /* CONFIG_MBO */
+
+	int ftm_responder;
+	int ftm_initiator;
+
+#ifdef CONFIG_FILS
+	u8 fils_cache_id[FILS_CACHE_ID_LEN];
+	int fils_cache_id_set;
+#endif /* CONFIG_FILS */
 };
 
 

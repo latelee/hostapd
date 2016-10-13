@@ -719,6 +719,18 @@ static int wpa_config_parse_key_mgmt(const struct parse_data *data,
 		else if (os_strcmp(start, "WPA-EAP-SUITE-B-192") == 0)
 			val |= WPA_KEY_MGMT_IEEE8021X_SUITE_B_192;
 #endif /* CONFIG_SUITEB192 */
+#ifdef CONFIG_FILS
+		else if (os_strcmp(start, "FILS-SHA256") == 0)
+			val |= WPA_KEY_MGMT_FILS_SHA256;
+		else if (os_strcmp(start, "FILS-SHA384") == 0)
+			val |= WPA_KEY_MGMT_FILS_SHA384;
+#ifdef CONFIG_IEEE80211R
+		else if (os_strcmp(start, "FT-FILS-SHA256") == 0)
+			val |= WPA_KEY_MGMT_FT_FILS_SHA256;
+		else if (os_strcmp(start, "FT-FILS-SHA384") == 0)
+			val |= WPA_KEY_MGMT_FT_FILS_SHA384;
+#endif /* CONFIG_IEEE80211R */
+#endif /* CONFIG_FILS */
 		else {
 			wpa_printf(MSG_ERROR, "Line %d: invalid key_mgmt '%s'",
 				   line, start);
@@ -2005,6 +2017,7 @@ static const struct parse_data ssid_fields[] = {
 	{ INT(dot11MeshHoldingTimeout) },
 #endif /* CONFIG_MESH */
 	{ INT(wpa_ptk_rekey) },
+	{ INT(group_rekey) },
 	{ STR(bgscan) },
 	{ INT_RANGE(ignore_broadcast_ssid, 0, 2) },
 #ifdef CONFIG_P2P
@@ -4368,6 +4381,8 @@ static const struct global_parse_data global_fields[] = {
 		    MBO_CELL_CAPA_NOT_SUPPORTED), 0 },
 #endif /*CONFIG_MBO */
 	{ INT(gas_address3), 0 },
+	{ INT_RANGE(ftm_responder, 0, 1), 0 },
+	{ INT_RANGE(ftm_initiator, 0, 1), 0 },
 };
 
 #undef FUNC

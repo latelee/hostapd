@@ -1256,6 +1256,8 @@ int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
 	if (max_sched_scan_ssids < 1 || wpa_s->conf->disable_scan_offload)
 		return -1;
 
+	wpa_s->sched_scan_stop_req = 0;
+
 	if (wpa_s->sched_scanning) {
 		wpa_dbg(wpa_s, MSG_DEBUG, "Already sched scanning");
 		return 0;
@@ -1553,6 +1555,9 @@ void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
 {
 	if (!wpa_s->sched_scanning)
 		return;
+
+	if (wpa_s->sched_scanning)
+		wpa_s->sched_scan_stop_req = 1;
 
 	wpa_dbg(wpa_s, MSG_DEBUG, "Cancelling sched scan");
 	eloop_cancel_timeout(wpa_supplicant_sched_scan_timeout, wpa_s, NULL);
@@ -2415,6 +2420,13 @@ int wpas_start_pno(struct wpa_supplicant *wpa_s)
 		}
 	}
 
+	if (wpa_s->sched_scan_stop_req) {
+		wpa_printf(MSG_DEBUG,
+			   "Schedule PNO after previous sched scan has stopped");
+		wpa_s->pno_sched_pending = 1;
+		return 0;
+	}
+
 	os_memset(&params, 0, sizeof(params));
 
 	num_ssid = num_match_ssid = 0;
@@ -2530,6 +2542,7 @@ int wpas_stop_pno(struct wpa_supplicant *wpa_s)
 		return 0;
 
 	ret = wpa_supplicant_stop_sched_scan(wpa_s);
+	wpa_s->sched_scan_stop_req = 1;
 
 	wpa_s->pno = 0;
 	wpa_s->pno_sched_pending = 0;
@@ -2725,4 +2738,32 @@ fail:
 	os_free(scan_plans);
 	wpa_printf(MSG_ERROR, "invalid scan plans list");
 	return -1;
+}
+
+
+/**
+ * wpas_scan_reset_sched_scan - Reset sched_scan state
+ * @wpa_s: Pointer to wpa_supplicant data
+ *
+ * This function is used to cancel a running scheduled scan and to reset an
+ * internal scan state to continue with a regular scan on the following
+ * wpa_supplicant_req_scan() calls.
+ */
+void wpas_scan_reset_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	wpa_s->normal_scans = 0;
+	if (wpa_s->sched_scanning) {
+		wpa_s->sched_scan_timed_out = 0;
+		wpa_s->prev_sched_ssid = NULL;
+		wpa_supplicant_cancel_sched_scan(wpa_s);
+	}
+}
+
+
+void wpas_scan_restart_sched_scan(struct wpa_supplicant *wpa_s)
+{
+	/* simulate timeout to restart the sched scan */
+	wpa_s->sched_scan_timed_out = 1;
+	wpa_s->prev_sched_ssid = NULL;
+	wpa_supplicant_cancel_sched_scan(wpa_s);
 }

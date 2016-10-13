@@ -44,6 +44,7 @@
 #include "dfs.h"
 #include "mbo_ap.h"
 #include "rrm.h"
+#include "taxonomy.h"
 
 
 u8 * hostapd_eid_supp_rates(struct hostapd_data *hapd, u8 *eid)
@@ -618,7 +619,7 @@ static int sae_sm_step(struct hostapd_data *hapd, struct sta_info *sta,
 				 * message now to get alternating sequence of
 				 * Authentication frames between the AP and STA.
 				 * Confirm will be sent in
-				 * Commited -> Confirmed/Accepted transition
+				 * Committed -> Confirmed/Accepted transition
 				 * when receiving Confirm from STA.
 				 */
 			}
@@ -1944,7 +1945,23 @@ static u16 send_assoc_resp(struct hostapd_data *hapd, struct sta_info *sta,
 
 #ifdef CONFIG_IEEE80211AC
 	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
-		p = hostapd_eid_vht_capabilities(hapd, p);
+		u32 nsts = 0, sta_nsts;
+
+		if (hapd->conf->use_sta_nsts && sta->vht_capabilities) {
+			struct ieee80211_vht_capabilities *capa;
+
+			nsts = (hapd->iface->conf->vht_capab >>
+				VHT_CAP_BEAMFORMEE_STS_OFFSET) & 7;
+			capa = sta->vht_capabilities;
+			sta_nsts = (le_to_host32(capa->vht_capabilities_info) >>
+				    VHT_CAP_BEAMFORMEE_STS_OFFSET) & 7;
+
+			if (nsts < sta_nsts)
+				nsts = 0;
+			else
+				nsts = sta_nsts;
+		}
+		p = hostapd_eid_vht_capabilities(hapd, p, nsts);
 		p = hostapd_eid_vht_operation(hapd, p);
 	}
 #endif /* CONFIG_IEEE80211AC */
@@ -2249,6 +2266,10 @@ static void handle_assoc(struct hostapd_data *hapd,
 	/* Make sure that the previously registered inactivity timer will not
 	 * remove the STA immediately. */
 	sta->timeout_next = STA_NULLFUNC;
+
+#ifdef CONFIG_TAXONOMY
+	taxonomy_sta_info_assoc_req(hapd, sta, pos, left);
+#endif /* CONFIG_TAXONOMY */
 
  fail:
 	/*
@@ -2557,8 +2578,9 @@ static int handle_action(struct hostapd_data *hapd,
 		       "handle_action - unknown action category %d or invalid "
 		       "frame",
 		       mgmt->u.action.category);
-	if (!(mgmt->da[0] & 0x01) && !(mgmt->u.action.category & 0x80) &&
-	    !(mgmt->sa[0] & 0x01)) {
+	if (!is_multicast_ether_addr(mgmt->da) &&
+	    !(mgmt->u.action.category & 0x80) &&
+	    !is_multicast_ether_addr(mgmt->sa)) {
 		struct ieee80211_mgmt *resp;
 
 		/*
@@ -2901,7 +2923,7 @@ static void handle_deauth_cb(struct hostapd_data *hapd,
 			     size_t len, int ok)
 {
 	struct sta_info *sta;
-	if (mgmt->da[0] & 0x01)
+	if (is_multicast_ether_addr(mgmt->da))
 		return;
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
@@ -2925,7 +2947,7 @@ static void handle_disassoc_cb(struct hostapd_data *hapd,
 			       size_t len, int ok)
 {
 	struct sta_info *sta;
-	if (mgmt->da[0] & 0x01)
+	if (is_multicast_ether_addr(mgmt->da))
 		return;
 	sta = ap_get_sta(hapd, mgmt->da);
 	if (!sta) {
@@ -3130,7 +3152,7 @@ void ieee802_11_rx_from_unknown(struct hostapd_data *hapd, const u8 *src,
 
 	wpa_printf(MSG_DEBUG, "Data/PS-poll frame from not associated STA "
 		   MACSTR, MAC2STR(src));
-	if (src[0] & 0x01) {
+	if (is_multicast_ether_addr(src)) {
 		/* Broadcast bit set in SA?! Ignore the frame silently. */
 		return;
 	}

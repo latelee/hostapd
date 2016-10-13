@@ -29,6 +29,7 @@
 #include "beacon.h"
 #include "hs20.h"
 #include "dfs.h"
+#include "taxonomy.h"
 
 
 #ifdef NEED_AP_MLME
@@ -485,11 +486,16 @@ static u8 * hostapd_gen_probe_resp(struct hostapd_data *hapd,
 
 #ifdef CONFIG_IEEE80211AC
 	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
-		pos = hostapd_eid_vht_capabilities(hapd, pos);
+		pos = hostapd_eid_vht_capabilities(hapd, pos, 0);
 		pos = hostapd_eid_vht_operation(hapd, pos);
 		pos = hostapd_eid_txpower_envelope(hapd, pos);
 		pos = hostapd_eid_wb_chsw_wrapper(hapd, pos);
 	}
+#endif /* CONFIG_IEEE80211AC */
+
+	pos = hostapd_eid_fils_indic(hapd, pos, 0);
+
+#ifdef CONFIG_IEEE80211AC
 	if (hapd->conf->vendor_vht)
 		pos = hostapd_eid_vendor_vht(hapd, pos);
 #endif /* CONFIG_IEEE80211AC */
@@ -599,7 +605,7 @@ void sta_track_expire(struct hostapd_iface *iface, int force)
 			   MAC2STR(info->addr));
 		dl_list_del(&info->list);
 		iface->num_sta_seen--;
-		os_free(info);
+		sta_track_del(info);
 	}
 }
 
@@ -632,6 +638,8 @@ void sta_track_add(struct hostapd_iface *iface, const u8 *addr)
 
 	/* Add a new entry */
 	info = os_zalloc(sizeof(*info));
+	if (info == NULL)
+		return;
 	os_memcpy(info->addr, addr, ETH_ALEN);
 	os_get_reltime(&info->last_seen);
 
@@ -671,6 +679,23 @@ sta_track_seen_on(struct hostapd_iface *iface, const u8 *addr,
 
 	return NULL;
 }
+
+
+#ifdef CONFIG_TAXONOMY
+void sta_track_claim_taxonomy_info(struct hostapd_iface *iface, const u8 *addr,
+				   struct wpabuf **probe_ie_taxonomy)
+{
+	struct hostapd_sta_info *info;
+
+	info = sta_track_get(iface, addr);
+	if (!info)
+		return;
+
+	wpabuf_free(*probe_ie_taxonomy);
+	*probe_ie_taxonomy = info->probe_ie_taxonomy;
+	info->probe_ie_taxonomy = NULL;
+}
+#endif /* CONFIG_TAXONOMY */
 
 
 void handle_probe_req(struct hostapd_data *hapd,
@@ -781,6 +806,21 @@ void handle_probe_req(struct hostapd_data *hapd,
 		elems.ssid_len = 0;
 	}
 #endif /* CONFIG_P2P */
+
+#ifdef CONFIG_TAXONOMY
+	{
+		struct sta_info *sta;
+		struct hostapd_sta_info *info;
+
+		if ((sta = ap_get_sta(hapd, mgmt->sa)) != NULL) {
+			taxonomy_sta_info_probe_req(hapd, sta, ie, ie_len);
+		} else if ((info = sta_track_get(hapd->iface,
+						 mgmt->sa)) != NULL) {
+			taxonomy_hostapd_sta_info_probe_req(hapd, info,
+							    ie, ie_len);
+		}
+	}
+#endif /* CONFIG_TAXONOMY */
 
 	res = ssid_match(hapd, elems.ssid, elems.ssid_len,
 			 elems.ssid_list, elems.ssid_list_len);
@@ -950,6 +990,16 @@ static u8 * hostapd_probe_resp_offloads(struct hostapd_data *hapd,
 #endif /* NEED_AP_MLME */
 
 
+void sta_track_del(struct hostapd_sta_info *info)
+{
+#ifdef CONFIG_TAXONOMY
+	wpabuf_free(info->probe_ie_taxonomy);
+	info->probe_ie_taxonomy = NULL;
+#endif /* CONFIG_TAXONOMY */
+	os_free(info);
+}
+
+
 int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 			       struct wpa_driver_ap_params *params)
 {
@@ -1105,11 +1155,16 @@ int ieee802_11_build_ap_params(struct hostapd_data *hapd,
 
 #ifdef CONFIG_IEEE80211AC
 	if (hapd->iconf->ieee80211ac && !hapd->conf->disable_11ac) {
-		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos);
+		tailpos = hostapd_eid_vht_capabilities(hapd, tailpos, 0);
 		tailpos = hostapd_eid_vht_operation(hapd, tailpos);
 		tailpos = hostapd_eid_txpower_envelope(hapd, tailpos);
 		tailpos = hostapd_eid_wb_chsw_wrapper(hapd, tailpos);
 	}
+#endif /* CONFIG_IEEE80211AC */
+
+	tailpos = hostapd_eid_fils_indic(hapd, tailpos, 0);
+
+#ifdef CONFIG_IEEE80211AC
 	if (hapd->conf->vendor_vht)
 		tailpos = hostapd_eid_vendor_vht(hapd, tailpos);
 #endif /* CONFIG_IEEE80211AC */

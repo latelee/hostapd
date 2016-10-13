@@ -18,11 +18,11 @@ def check_qos_map(ap, hapd, dev, sta, dscp, tid, ap_tid=None):
     if not ap_tid:
         ap_tid = tid
     bssid = ap['bssid']
-    Wlantest.setup(hapd)
     wt = Wlantest()
     wt.clear_sta_counters(bssid, sta)
     hwsim_utils.test_connectivity(dev, hapd, dscp=dscp, config=False)
-    time.sleep(0.02)
+    sleep_time = 0.02 if dev.hostname is None else 0.2
+    time.sleep(sleep_time)
     tx = wt.get_tx_tid(bssid, sta, tid)
     if tx == 0:
         [ tx, rx ] = wt.get_tid_counters(bssid, sta)
@@ -49,6 +49,7 @@ def test_ap_qosmap(dev, apdev):
     addr = dev[0].p2p_interface_addr()
     dev[0].request("DATA_TEST_CONFIG 1")
     hapd.request("DATA_TEST_CONFIG 1")
+    Wlantest.setup(hapd)
     check_qos_map(apdev[0], hapd, dev[0], addr, 53, 2)
     check_qos_map(apdev[0], hapd, dev[0], addr, 22, 6)
     check_qos_map(apdev[0], hapd, dev[0], addr, 8, 0)
@@ -84,6 +85,7 @@ def test_ap_qosmap_default(dev, apdev):
     addr = dev[0].p2p_interface_addr()
     dev[0].request("DATA_TEST_CONFIG 1")
     hapd.request("DATA_TEST_CONFIG 1")
+    Wlantest.setup(hapd)
     for dscp in [ 0, 7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 56, 63]:
         check_qos_map(apdev[0], hapd, dev[0], addr, dscp, dscp >> 3)
     dev[0].request("DATA_TEST_CONFIG 0")
@@ -119,6 +121,7 @@ def test_ap_qosmap_default_acm(dev, apdev):
     addr = dev[0].p2p_interface_addr()
     dev[0].request("DATA_TEST_CONFIG 1")
     hapd.request("DATA_TEST_CONFIG 1")
+    Wlantest.setup(hapd)
     for dscp in [ 0, 7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 47, 48, 55, 56, 63]:
         ap_tid = dscp >> 3
         tid = ap_tid

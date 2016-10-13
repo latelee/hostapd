@@ -222,6 +222,13 @@ void ap_free_sta(struct hostapd_data *hapd, struct sta_info *sta)
 		hapd->iface->num_sta_ht_20mhz--;
 	}
 
+#ifdef CONFIG_TAXONOMY
+	wpabuf_free(sta->probe_ie_taxonomy);
+	sta->probe_ie_taxonomy = NULL;
+	wpabuf_free(sta->assoc_ie_taxonomy);
+	sta->assoc_ie_taxonomy = NULL;
+#endif /* CONFIG_TAXONOMY */
+
 #ifdef CONFIG_IEEE80211N
 	ht40_intolerant_remove(hapd->iface, sta);
 #endif /* CONFIG_IEEE80211N */
@@ -659,6 +666,11 @@ struct sta_info * ap_sta_add(struct hostapd_data *hapd, const u8 *addr)
 	ap_sta_remove_in_other_bss(hapd, sta);
 	sta->last_seq_ctrl = WLAN_INVALID_MGMT_SEQ;
 	dl_list_init(&sta->ip6addr);
+
+#ifdef CONFIG_TAXONOMY
+	sta_track_claim_taxonomy_info(hapd->iface, addr,
+				      &sta->probe_ie_taxonomy);
+#endif /* CONFIG_TAXONOMY */
 
 	return sta;
 }

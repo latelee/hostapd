@@ -49,6 +49,8 @@ static HMAC_CTX * HMAC_CTX_new(void)
 
 static void HMAC_CTX_free(HMAC_CTX *ctx)
 {
+	if (!ctx)
+		return;
 	HMAC_CTX_cleanup(ctx);
 	bin_clear_free(ctx, sizeof(*ctx));
 }
@@ -67,6 +69,9 @@ static EVP_MD_CTX * EVP_MD_CTX_new(void)
 
 static void EVP_MD_CTX_free(EVP_MD_CTX *ctx)
 {
+	if (!ctx)
+		return;
+	EVP_MD_CTX_cleanup(ctx);
 	bin_clear_free(ctx, sizeof(*ctx));
 }
 
@@ -74,7 +79,11 @@ static void EVP_MD_CTX_free(EVP_MD_CTX *ctx)
 
 static BIGNUM * get_group5_prime(void)
 {
-#ifdef OPENSSL_IS_BORINGSSL
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L && !defined(LIBRESSL_VERSION_NUMBER)
+	return BN_get_rfc3526_prime_1536(NULL);
+#elif !defined(OPENSSL_IS_BORINGSSL)
+	return get_rfc3526_prime_1536(NULL);
+#else
 	static const unsigned char RFC3526_PRIME_1536[] = {
 		0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xC9,0x0F,0xDA,0xA2,
 		0x21,0x68,0xC2,0x34,0xC4,0xC6,0x62,0x8B,0x80,0xDC,0x1C,0xD1,
@@ -94,9 +103,7 @@ static BIGNUM * get_group5_prime(void)
 		0xCA,0x23,0x73,0x27,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
 	};
         return BN_bin2bn(RFC3526_PRIME_1536, sizeof(RFC3526_PRIME_1536), NULL);
-#else /* OPENSSL_IS_BORINGSSL */
-	return get_rfc3526_prime_1536(NULL);
-#endif /* OPENSSL_IS_BORINGSSL */
+#endif
 }
 
 #ifdef OPENSSL_NO_SHA256
@@ -604,7 +611,7 @@ void crypto_cipher_deinit(struct crypto_cipher *ctx)
 
 void * dh5_init(struct wpabuf **priv, struct wpabuf **publ)
 {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	DH *dh;
 	struct wpabuf *pubkey = NULL, *privkey = NULL;
 	size_t publen, privlen;
@@ -705,7 +712,7 @@ err:
 
 void * dh5_init_fixed(const struct wpabuf *priv, const struct wpabuf *publ)
 {
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 	DH *dh;
 
 	dh = DH_new();

@@ -218,6 +218,20 @@ static void hostapd_ext_capab_byte(struct hostapd_data *hapd, u8 *pos, int idx)
 		if (hapd->conf->ssid.utf8_ssid)
 			*pos |= 0x01; /* Bit 48 - UTF-8 SSID */
 		break;
+	case 7: /* Bits 56-63 */
+		break;
+	case 8: /* Bits 64-71 */
+		if (hapd->conf->ftm_responder)
+			*pos |= 0x40; /* Bit 70 - FTM responder */
+		if (hapd->conf->ftm_initiator)
+			*pos |= 0x80; /* Bit 71 - FTM initiator */
+	case 9: /* Bits 72-79 */
+#ifdef CONFIG_FILS
+		if ((hapd->conf->wpa & WPA_PROTO_RSN) &&
+		    wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt))
+			*pos |= 0x01;
+#endif /* CONFIG_FILS */
+		break;
 	}
 }
 
@@ -237,6 +251,9 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 		len = 1;
 	if (len < 7 && hapd->conf->ssid.utf8_ssid)
 		len = 7;
+	if (len < 9 &&
+	    (hapd->conf->ftm_initiator || hapd->conf->ftm_responder))
+		len = 9;
 #ifdef CONFIG_WNM
 	if (len < 4)
 		len = 4;
@@ -249,6 +266,11 @@ u8 * hostapd_eid_ext_capab(struct hostapd_data *hapd, u8 *eid)
 	if (hapd->conf->mbo_enabled && len < 6)
 		len = 6;
 #endif /* CONFIG_MBO */
+#ifdef CONFIG_FILS
+	if ((!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	     !wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt)) && len < 10)
+		len = 10;
+#endif /* CONFIG_FILS */
 	if (len < hapd->iface->extended_capa_len)
 		len = hapd->iface->extended_capa_len;
 	if (len == 0)
@@ -574,4 +596,57 @@ void ap_copy_sta_supp_op_classes(struct sta_info *sta,
 	sta->supp_op_classes[0] = supp_op_classes_len;
 	os_memcpy(sta->supp_op_classes + 1, supp_op_classes,
 		  supp_op_classes_len);
+}
+
+
+u8 * hostapd_eid_fils_indic(struct hostapd_data *hapd, u8 *eid, int hessid)
+{
+	u8 *pos = eid;
+#ifdef CONFIG_FILS
+	u8 *len;
+	u16 fils_info = 0;
+
+	if (!(hapd->conf->wpa & WPA_PROTO_RSN) ||
+	    !wpa_key_mgmt_fils(hapd->conf->wpa_key_mgmt))
+		return pos;
+
+	*pos++ = WLAN_EID_FILS_INDICATION;
+	len = pos++;
+	/* TODO: B0..B2: Number of Public Key Identifiers */
+	if (hapd->conf->erp_domain) {
+		/* TODO: Support for setting multiple domain identifiers */
+		/* B3..B5: Number of Realm Identifiers */
+		fils_info |= BIT(3);
+	}
+	/* TODO: B6: FILS IP Address Configuration */
+	if (hapd->conf->fils_cache_id_set)
+		fils_info |= BIT(7);
+	if (hessid && !is_zero_ether_addr(hapd->conf->hessid))
+		fils_info |= BIT(8); /* HESSID Included */
+	/* FILS Shared Key Authentication without PFS Supported */
+	fils_info |= BIT(9);
+	/* TODO: B10: FILS Shared Key Authentication with PFS Supported */
+	/* TODO: B11: FILS Public Key Authentication Supported */
+	/* B12..B15: Reserved */
+	WPA_PUT_LE16(pos, fils_info);
+	pos += 2;
+	if (hapd->conf->fils_cache_id_set) {
+		os_memcpy(pos, hapd->conf->fils_cache_id, FILS_CACHE_ID_LEN);
+		pos += FILS_CACHE_ID_LEN;
+	}
+	if (hessid && !is_zero_ether_addr(hapd->conf->hessid)) {
+		os_memcpy(pos, hapd->conf->hessid, ETH_ALEN);
+		pos += ETH_ALEN;
+	}
+	if (hapd->conf->erp_domain) {
+		u16 hash;
+
+		hash = fils_domain_name_hash(hapd->conf->erp_domain);
+		WPA_PUT_LE16(pos, hash);
+		pos += 2;
+	}
+	*len = pos - len - 1;
+#endif /* CONFIG_FILS */
+
+	return pos;
 }

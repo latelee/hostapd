@@ -237,14 +237,14 @@ void wlantest_process(struct wlantest *wt, const u8 *data, size_t len);
 void wlantest_process_prism(struct wlantest *wt, const u8 *data, size_t len);
 void wlantest_process_80211(struct wlantest *wt, const u8 *data, size_t len);
 void wlantest_process_wired(struct wlantest *wt, const u8 *data, size_t len);
-u32 crc32(const u8 *frame, size_t frame_len);
 int monitor_init(struct wlantest *wt, const char *ifname);
 int monitor_init_wired(struct wlantest *wt, const char *ifname);
 void monitor_deinit(struct wlantest *wt);
 void rx_mgmt(struct wlantest *wt, const u8 *data, size_t len);
 void rx_mgmt_ack(struct wlantest *wt, const struct ieee80211_hdr *hdr);
 void rx_data(struct wlantest *wt, const u8 *data, size_t len);
-void rx_data_eapol(struct wlantest *wt, const u8 *dst, const u8 *src,
+void rx_data_eapol(struct wlantest *wt, const u8 *bssid, const u8 *sta_addr,
+		   const u8 *dst, const u8 *src,
 		   const u8 *data, size_t len, int prot);
 void rx_data_ip(struct wlantest *wt, const u8 *bssid, const u8 *sta_addr,
 		const u8 *dst, const u8 *src, const u8 *data, size_t len,
@@ -274,6 +274,10 @@ u8 * ccmp_decrypt(const u8 *tk, const struct ieee80211_hdr *hdr,
 		  const u8 *data, size_t data_len, size_t *decrypted_len);
 u8 * ccmp_encrypt(const u8 *tk, u8 *frame, size_t len, size_t hdrlen, u8 *qos,
 		  u8 *pn, int keyid, size_t *encrypted_len);
+u8 * ccmp_encrypt_pv1(const u8 *tk, const u8 *a1, const u8 *a2, const u8 *a3,
+		      const u8 *frame, size_t len,
+		      size_t hdrlen, const u8 *pn, int keyid,
+		      size_t *encrypted_len);
 void ccmp_get_pn(u8 *pn, const u8 *data);
 u8 * ccmp_256_decrypt(const u8 *tk, const struct ieee80211_hdr *hdr,
 		      const u8 *data, size_t data_len, size_t *decrypted_len);

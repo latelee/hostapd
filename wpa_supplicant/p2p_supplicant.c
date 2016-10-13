@@ -1881,7 +1881,7 @@ static void wpas_start_wps_go(struct wpa_supplicant *wpa_s,
 	wpa_config_set_network_defaults(ssid);
 	ssid->temporary = 1;
 	ssid->p2p_group = 1;
-	ssid->p2p_persistent_group = params->persistent_group;
+	ssid->p2p_persistent_group = !!params->persistent_group;
 	ssid->mode = group_formation ? WPAS_MODE_P2P_GROUP_FORMATION :
 		WPAS_MODE_P2P_GO;
 	ssid->frequency = params->freq;
@@ -3369,7 +3369,7 @@ static int wpas_p2p_get_center_80mhz(struct wpa_supplicant *wpa_s,
 				     u8 channel)
 {
 	u8 center_channels[] = { 42, 58, 106, 122, 138, 155 };
-	unsigned int i;
+	size_t i;
 
 	if (mode->mode != HOSTAPD_MODE_IEEE80211A)
 		return 0;

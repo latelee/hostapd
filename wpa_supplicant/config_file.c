@@ -785,6 +785,7 @@ static void wpa_config_write_network(FILE *f, struct wpa_ssid *ssid)
 	INT_DEF(dot11MeshHoldingTimeout, DEFAULT_MESH_HOLDING_TIMEOUT);
 #endif /* CONFIG_MESH */
 	INT(wpa_ptk_rekey);
+	INT(group_rekey);
 	INT(ignore_broadcast_ssid);
 #ifdef CONFIG_HT_OVERRIDES
 	INT_DEF(disable_ht, DEFAULT_DISABLE_HT);
@@ -1338,6 +1339,11 @@ static void wpa_config_write_global(FILE *f, struct wpa_config *config)
 
 	if (config->gas_address3)
 		fprintf(f, "gas_address3=%d\n", config->gas_address3);
+
+	if (config->ftm_responder)
+		fprintf(f, "ftm_responder=%d\n", config->ftm_responder);
+	if (config->ftm_initiator)
+		fprintf(f, "ftm_initiator=%d\n", config->ftm_initiator);
 }
 
 #endif /* CONFIG_NO_CONFIG_WRITE */

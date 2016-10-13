@@ -337,3 +337,14 @@ CONFIG_IPV6=y
 # These extentions facilitate efficient use of multiple frequency bands
 # available to the AP and the devices that may associate with it.
 #CONFIG_MBO=y
+
+# Client Taxonomy
+# Has the AP retain the Probe Request and (Re)Association Request frames from
+# a client, from which a signature can be produced which can identify the model
+# of client device like "Nexus 6P" or "iPhone 5s".
+#CONFIG_TAXONOMY=y
+
+# Fast Initial Link Setup (FILS) (IEEE 802.11ai)
+# Note: This is an experimental and not yet complete implementation. This
+# should not be enabled for production use.
+#CONFIG_FILS=y

@@ -1475,10 +1475,7 @@ DBusMessage * wpas_dbus_handler_disconnect(DBusMessage *message,
 					   struct wpa_supplicant *wpa_s)
 {
 	if (wpa_s->current_ssid != NULL) {
-		wpa_s->disconnected = 1;
-		wpa_supplicant_deauthenticate(wpa_s,
-					      WLAN_REASON_DEAUTH_LEAVING);
-
+		wpas_request_disconnection(wpa_s);
 		return NULL;
 	}
 
@@ -1507,7 +1504,7 @@ DBusMessage * wpas_dbus_handler_add_network(DBusMessage *message,
 	dbus_message_iter_init(message, &iter);
 
 	if (wpa_s->dbus_new_path)
-		ssid = wpa_config_add_network(wpa_s->conf);
+		ssid = wpa_supplicant_add_network(wpa_s);
 	if (ssid == NULL) {
 		wpa_printf(MSG_ERROR, "%s[dbus]: can't add new interface.",
 			   __func__);
@@ -1516,9 +1513,6 @@ DBusMessage * wpas_dbus_handler_add_network(DBusMessage *message,
 			"wpa_supplicant could not add a network on this interface.");
 		goto err;
 	}
-	wpas_notify_network_added(wpa_s, ssid);
-	ssid->disabled = 1;
-	wpa_config_set_network_defaults(ssid);
 
 	dbus_error_init(&error);
 	if (!set_network_properties(wpa_s, ssid, &iter, &error)) {
@@ -1665,8 +1659,7 @@ DBusMessage * wpas_dbus_handler_remove_network(DBusMessage *message,
 	const char *op;
 	char *iface, *net_id;
 	int id;
-	struct wpa_ssid *ssid;
-	int was_disabled;
+	int result;
 
 	dbus_message_get_args(message, NULL, DBUS_TYPE_OBJECT_PATH, &op,
 			      DBUS_TYPE_INVALID);
@@ -1689,27 +1682,12 @@ DBusMessage * wpas_dbus_handler_remove_network(DBusMessage *message,
 		goto out;
 	}
 
-	ssid = wpa_config_get_network(wpa_s->conf, id);
-	if (ssid == NULL) {
+	result = wpa_supplicant_remove_network(wpa_s, id);
+	if (result == -1) {
 		reply = wpas_dbus_error_network_unknown(message);
 		goto out;
 	}
-
-	was_disabled = ssid->disabled;
-
-	wpas_notify_network_removed(wpa_s, ssid);
-
-	if (ssid == wpa_s->current_ssid)
-		wpa_supplicant_deauthenticate(wpa_s,
-					      WLAN_REASON_DEAUTH_LEAVING);
-	else if (!was_disabled && wpa_s->sched_scanning) {
-		wpa_printf(MSG_DEBUG,
-			   "Stop ongoing sched_scan to remove network from filters");
-		wpa_supplicant_cancel_sched_scan(wpa_s);
-		wpa_supplicant_req_scan(wpa_s, 0, 0);
-	}
-
-	if (wpa_config_remove_network(wpa_s->conf, id) < 0) {
+	if (result == -2) {
 		wpa_printf(MSG_ERROR,
 			   "%s[dbus]: error occurred when removing network %d",
 			   __func__, id);
@@ -3258,6 +3236,30 @@ dbus_bool_t wpas_dbus_getter_bridge_ifname(
 
 	return wpas_dbus_simple_property_getter(iter, DBUS_TYPE_STRING,
 						&bridge_ifname, error);
+}
+
+
+/**
+ * wpas_dbus_getter_config_file - Get interface configuration file path
+ * @iter: Pointer to incoming dbus message iter
+ * @error: Location to store error on failure
+ * @user_data: Function specific data
+ * Returns: TRUE on success, FALSE on failure
+ *
+ * Getter for "ConfigFile" property.
+ */
+dbus_bool_t wpas_dbus_getter_config_file(
+	const struct wpa_dbus_property_desc *property_desc,
+	DBusMessageIter *iter, DBusError *error, void *user_data)
+{
+	struct wpa_supplicant *wpa_s = user_data;
+	char *confname = "";
+
+	if (wpa_s->confname)
+		confname = wpa_s->confname;
+
+	return wpas_dbus_simple_property_getter(iter, DBUS_TYPE_STRING,
+						&confname, error);
 }
 
 

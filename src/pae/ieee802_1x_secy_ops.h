@@ -13,10 +13,6 @@
 #include "common/ieee802_1x_defs.h"
 
 struct ieee802_1x_kay_conf;
-struct receive_sa;
-struct transmit_sa;
-struct receive_sc;
-struct transmit_sc;
 
 int secy_init_macsec(struct ieee802_1x_kay *kay);
 int secy_deinit_macsec(struct ieee802_1x_kay *kay);
@@ -26,13 +22,13 @@ int secy_cp_control_validate_frames(struct ieee802_1x_kay *kay,
 				    enum validate_frames vf);
 int secy_cp_control_protect_frames(struct ieee802_1x_kay *kay, Boolean flag);
 int secy_cp_control_replay(struct ieee802_1x_kay *kay, Boolean flag, u32 win);
-int secy_cp_control_current_cipher_suite(struct ieee802_1x_kay *kay,
-					 const u8 *cs, size_t cs_len);
+int secy_cp_control_current_cipher_suite(struct ieee802_1x_kay *kay, u64 cs);
 int secy_cp_control_confidentiality_offset(struct ieee802_1x_kay *kay,
 					   enum confidentiality_offset co);
 int secy_cp_control_enable_port(struct ieee802_1x_kay *kay, Boolean flag);
 
 /****** KaY -> SecY *******/
+int secy_get_capability(struct ieee802_1x_kay *kay, enum macsec_cap *cap);
 int secy_get_receive_lowest_pn(struct ieee802_1x_kay *kay,
 			       struct receive_sa *rxsa);
 int secy_get_transmit_next_pn(struct ieee802_1x_kay *kay,

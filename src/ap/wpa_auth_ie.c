@@ -210,6 +210,30 @@ int wpa_write_rsn_ie(struct wpa_auth_config *conf, u8 *buf, size_t len,
 		pos += RSN_SELECTOR_LEN;
 		num_suites++;
 	}
+#ifdef CONFIG_FILS
+	if (conf->wpa_key_mgmt & WPA_KEY_MGMT_FILS_SHA256) {
+		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_FILS_SHA256);
+		pos += RSN_SELECTOR_LEN;
+		num_suites++;
+	}
+	if (conf->wpa_key_mgmt & WPA_KEY_MGMT_FILS_SHA384) {
+		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_FILS_SHA384);
+		pos += RSN_SELECTOR_LEN;
+		num_suites++;
+	}
+#ifdef CONFIG_IEEE80211R
+	if (conf->wpa_key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256) {
+		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_FT_FILS_SHA256);
+		pos += RSN_SELECTOR_LEN;
+		num_suites++;
+	}
+	if (conf->wpa_key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384) {
+		RSN_SELECTOR_PUT(pos, RSN_AUTH_KEY_MGMT_FT_FILS_SHA384);
+		pos += RSN_SELECTOR_LEN;
+		num_suites++;
+	}
+#endif /* CONFIG_IEEE80211R */
+#endif /* CONFIG_FILS */
 
 #ifdef CONFIG_RSN_TESTING
 	if (rsn_testing) {
@@ -509,6 +533,18 @@ int wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 			selector = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B_192;
 		else if (data.key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B)
 			selector = RSN_AUTH_KEY_MGMT_802_1X_SUITE_B;
+#ifdef CONFIG_FILS
+#ifdef CONFIG_IEEE80211R
+		else if (data.key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384)
+			selector = RSN_AUTH_KEY_MGMT_FT_FILS_SHA384;
+		else if (data.key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256)
+			selector = RSN_AUTH_KEY_MGMT_FT_FILS_SHA256;
+#endif /* CONFIG_IEEE80211R */
+		else if (data.key_mgmt & WPA_KEY_MGMT_FILS_SHA384)
+			selector = RSN_AUTH_KEY_MGMT_FILS_SHA384;
+		else if (data.key_mgmt & WPA_KEY_MGMT_FILS_SHA256)
+			selector = RSN_AUTH_KEY_MGMT_FILS_SHA256;
+#endif /* CONFIG_FILS */
 #ifdef CONFIG_IEEE80211R
 		else if (data.key_mgmt & WPA_KEY_MGMT_FT_IEEE8021X)
 			selector = RSN_AUTH_KEY_MGMT_FT_802_1X;
@@ -591,6 +627,18 @@ int wpa_validate_wpa_ie(struct wpa_authenticator *wpa_auth,
 		sm->wpa_key_mgmt = WPA_KEY_MGMT_IEEE8021X_SUITE_B_192;
 	else if (key_mgmt & WPA_KEY_MGMT_IEEE8021X_SUITE_B)
 		sm->wpa_key_mgmt = WPA_KEY_MGMT_IEEE8021X_SUITE_B;
+#ifdef CONFIG_FILS
+#ifdef CONFIG_IEEE80211R
+	else if (key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384)
+		sm->wpa_key_mgmt = WPA_KEY_MGMT_FT_FILS_SHA384;
+	else if (data.key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256)
+		sm->wpa_key_mgmt = WPA_KEY_MGMT_FT_FILS_SHA256;
+#endif /* CONFIG_IEEE80211R */
+	else if (key_mgmt & WPA_KEY_MGMT_FILS_SHA384)
+		sm->wpa_key_mgmt = WPA_KEY_MGMT_FILS_SHA384;
+	else if (key_mgmt & WPA_KEY_MGMT_FILS_SHA256)
+		sm->wpa_key_mgmt = WPA_KEY_MGMT_FILS_SHA256;
+#endif /* CONFIG_FILS */
 #ifdef CONFIG_IEEE80211R
 	else if (key_mgmt & WPA_KEY_MGMT_FT_IEEE8021X)
 		sm->wpa_key_mgmt = WPA_KEY_MGMT_FT_IEEE8021X;

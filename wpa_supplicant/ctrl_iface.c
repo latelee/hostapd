@@ -511,6 +511,12 @@ static int wpa_supplicant_ctrl_iface_set(struct wpa_supplicant *wpa_s,
 		wpa_s->test_failure = atoi(value);
 	} else if (os_strcasecmp(cmd, "p2p_go_csa_on_inv") == 0) {
 		wpa_s->p2p_go_csa_on_inv = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "ignore_auth_resp") == 0) {
+		wpa_s->ignore_auth_resp = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "ignore_assoc_disallow") == 0) {
+		wpa_s->ignore_assoc_disallow = !!atoi(value);
+	} else if (os_strcasecmp(cmd, "reject_btm_req_reason") == 0) {
+		wpa_s->reject_btm_req_reason = atoi(value);
 #endif /* CONFIG_TESTING_OPTIONS */
 #ifndef CONFIG_NO_CONFIG_BLOBS
 	} else if (os_strcmp(cmd, "blob") == 0) {
@@ -1886,6 +1892,10 @@ static int wpa_supplicant_ctrl_iface_status(struct wpa_supplicant *wpa_s,
 						  "mode=P2P GO - group "
 						  "formation\n");
 				break;
+			case WPAS_MODE_MESH:
+				ret = os_snprintf(pos, end - pos,
+						  "mode=mesh\n");
+				break;
 			default:
 				ret = 0;
 				break;
@@ -2427,6 +2437,39 @@ static char * wpa_supplicant_ie_txt(char *pos, char *end, const char *proto,
 	}
 #endif /* CONFIG_SUITEB192 */
 
+#ifdef CONFIG_FILS
+	if (data.key_mgmt & WPA_KEY_MGMT_FILS_SHA256) {
+		ret = os_snprintf(pos, end - pos, "%sFILS-SHA256",
+				  pos == start ? "" : "+");
+		if (os_snprintf_error(end - pos, ret))
+			return pos;
+		pos += ret;
+	}
+	if (data.key_mgmt & WPA_KEY_MGMT_FILS_SHA384) {
+		ret = os_snprintf(pos, end - pos, "%sFILS-SHA384",
+				  pos == start ? "" : "+");
+		if (os_snprintf_error(end - pos, ret))
+			return pos;
+		pos += ret;
+	}
+#ifdef CONFIG_IEEE80211R
+	if (data.key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA256) {
+		ret = os_snprintf(pos, end - pos, "%sFT-FILS-SHA256",
+				  pos == start ? "" : "+");
+		if (os_snprintf_error(end - pos, ret))
+			return pos;
+		pos += ret;
+	}
+	if (data.key_mgmt & WPA_KEY_MGMT_FT_FILS_SHA384) {
+		ret = os_snprintf(pos, end - pos, "%sFT-FILS-SHA384",
+				  pos == start ? "" : "+");
+		if (os_snprintf_error(end - pos, ret))
+			return pos;
+		pos += ret;
+	}
+#endif /* CONFIG_IEEE80211R */
+#endif /* CONFIG_FILS */
+
 	if (data.key_mgmt & WPA_KEY_MGMT_OSEN) {
 		ret = os_snprintf(pos, end - pos, "%sOSEN",
 				  pos == start ? "" : "+");
@@ -2598,6 +2641,14 @@ static int wpa_supplicant_ctrl_iface_scan_result(
 		pos += ret;
 	}
 #endif /* CONFIG_HS20 */
+#ifdef CONFIG_FILS
+	if (wpa_bss_get_ie(bss, WLAN_EID_FILS_INDICATION)) {
+		ret = os_snprintf(pos, end - pos, "[FILS]");
+		if (os_snprintf_error(end - pos, ret))
+			return -1;
+		pos += ret;
+	}
+#endif /* CONFIG_FILS */
 #ifdef CONFIG_FST
 	if (wpa_bss_get_ie(bss, WLAN_EID_MULTI_BAND)) {
 		ret = os_snprintf(pos, end - pos, "[FST]");
@@ -2919,14 +2970,9 @@ static int wpa_supplicant_ctrl_iface_add_network(
 
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: ADD_NETWORK");
 
-	ssid = wpa_config_add_network(wpa_s->conf);
+	ssid = wpa_supplicant_add_network(wpa_s);
 	if (ssid == NULL)
 		return -1;
-
-	wpas_notify_network_added(wpa_s, ssid);
-
-	ssid->disabled = 1;
-	wpa_config_set_network_defaults(ssid);
 
 	ret = os_snprintf(buf, buflen, "%d\n", ssid->id);
 	if (os_snprintf_error(buflen, ret))
@@ -2940,7 +2986,7 @@ static int wpa_supplicant_ctrl_iface_remove_network(
 {
 	int id;
 	struct wpa_ssid *ssid;
-	int was_disabled;
+	int result;
 
 	/* cmd: "<network id>" or "all" */
 	if (os_strcmp(cmd, "all") == 0) {
@@ -2976,54 +3022,17 @@ static int wpa_supplicant_ctrl_iface_remove_network(
 	id = atoi(cmd);
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: REMOVE_NETWORK id=%d", id);
 
-	ssid = wpa_config_get_network(wpa_s->conf, id);
-	if (ssid)
-		wpas_notify_network_removed(wpa_s, ssid);
-	if (ssid == NULL) {
+	result = wpa_supplicant_remove_network(wpa_s, id);
+	if (result == -1) {
 		wpa_printf(MSG_DEBUG, "CTRL_IFACE: Could not find network "
 			   "id=%d", id);
 		return -1;
 	}
-
-	if (wpa_s->last_ssid == ssid)
-		wpa_s->last_ssid = NULL;
-
-	if (ssid == wpa_s->current_ssid || wpa_s->current_ssid == NULL) {
-#ifdef CONFIG_SME
-		wpa_s->sme.prev_bssid_set = 0;
-#endif /* CONFIG_SME */
-		/*
-		 * Invalidate the EAP session cache if the current or
-		 * previously used network is removed.
-		 */
-		eapol_sm_invalidate_cached_session(wpa_s->eapol);
-	}
-
-	if (ssid == wpa_s->current_ssid) {
-		wpa_sm_set_config(wpa_s->wpa, NULL);
-		eapol_sm_notify_config(wpa_s->eapol, NULL, NULL);
-
-		if (wpa_s->wpa_state >= WPA_AUTHENTICATING)
-			wpa_s->own_disconnect_req = 1;
-		wpa_supplicant_deauthenticate(wpa_s,
-					      WLAN_REASON_DEAUTH_LEAVING);
-	}
-
-	was_disabled = ssid->disabled;
-
-	if (wpa_config_remove_network(wpa_s->conf, id) < 0) {
+	if (result == -2) {
 		wpa_printf(MSG_DEBUG, "CTRL_IFACE: Not able to remove the "
 			   "network id=%d", id);
 		return -1;
 	}
-
-	if (!was_disabled && wpa_s->sched_scanning) {
-		wpa_printf(MSG_DEBUG, "Stop ongoing sched_scan to remove "
-			   "network from filters");
-		wpa_supplicant_cancel_sched_scan(wpa_s);
-		wpa_supplicant_req_scan(wpa_s, 0, 0);
-	}
-
 	return 0;
 }
 
@@ -4038,6 +4047,15 @@ static int wpa_supplicant_ctrl_iface_get_capability(
 	}
 #endif /* CONFIG_ACS */
 
+#ifdef CONFIG_FILS
+	if (os_strcmp(field, "fils") == 0) {
+		res = os_snprintf(buf, buflen, "FILS");
+		if (os_snprintf_error(buflen, res))
+			return -1;
+		return res;
+	}
+#endif /* CONFIG_FILS */
+
 	wpa_printf(MSG_DEBUG, "CTRL_IFACE: Unknown GET_CAPABILITY field '%s'",
 		   field);
 
@@ -4268,6 +4286,14 @@ static int print_bss_info(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
 			pos += ret;
 		}
 #endif /* CONFIG_HS20 */
+#ifdef CONFIG_FILS
+		if (wpa_bss_get_ie(bss, WLAN_EID_FILS_INDICATION)) {
+			ret = os_snprintf(pos, end - pos, "[FILS]");
+			if (os_snprintf_error(end - pos, ret))
+				return 0;
+			pos += ret;
+		}
+#endif /* CONFIG_FILS */
 
 		ret = os_snprintf(pos, end - pos, "\n");
 		if (os_snprintf_error(end - pos, ret))
@@ -6415,6 +6441,7 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	u16 id[MAX_ANQP_INFO_ID];
 	size_t num_id = 0;
 	u32 subtypes = 0;
+	int get_cell_pref = 0;
 
 	used = hwaddr_aton2(dst, dst_addr);
 	if (used < 0)
@@ -6432,6 +6459,15 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 #else /* CONFIG_HS20 */
 			return -1;
 #endif /* CONFIG_HS20 */
+		} else if (os_strncmp(pos, "mbo:", 4) == 0) {
+#ifdef CONFIG_MBO
+			int num = atoi(pos + 4);
+			if (num != MBO_ANQP_SUBTYPE_CELL_CONN_PREF)
+				return -1;
+			get_cell_pref = 1;
+#else /* CONFIG_MBO */
+			return -1;
+#endif /* CONFIG_MBO */
 		} else {
 			id[num_id] = atoi(pos);
 			if (id[num_id])
@@ -6446,7 +6482,8 @@ static int get_anqp(struct wpa_supplicant *wpa_s, char *dst)
 	if (num_id == 0)
 		return -1;
 
-	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes);
+	return anqp_send_req(wpa_s, dst_addr, id, num_id, subtypes,
+			     get_cell_pref);
 }
 
 
@@ -6783,6 +6820,9 @@ static int wpa_supplicant_ctrl_iface_autoscan(struct wpa_supplicant *wpa_s,
 		autoscan_init(wpa_s, 1);
 	else if (state == WPA_SCANNING)
 		wpa_supplicant_reinit_autoscan(wpa_s);
+	else
+		wpa_printf(MSG_DEBUG, "No autoscan update in state %s",
+			   wpa_supplicant_state_txt(state));
 
 	return 0;
 }
@@ -7237,6 +7277,9 @@ static void wpa_supplicant_ctrl_iface_flush(struct wpa_supplicant *wpa_s)
 	wpa_s->extra_roc_dur = 0;
 	wpa_s->test_failure = WPAS_TEST_FAILURE_NONE;
 	wpa_s->p2p_go_csa_on_inv = 0;
+	wpa_s->ignore_auth_resp = 0;
+	wpa_s->ignore_assoc_disallow = 0;
+	wpa_s->reject_btm_req_reason = 0;
 	wpa_sm_set_test_assoc_ie(wpa_s->wpa, NULL);
 #endif /* CONFIG_TESTING_OPTIONS */
 
@@ -8593,10 +8636,7 @@ static int wpas_ctrl_iface_mac_rand_scan(struct wpa_supplicant *wpa_s,
 			}
 		} else if (wpa_s->sched_scanning &&
 			   (type & MAC_ADDR_RAND_SCHED_SCAN)) {
-			/* simulate timeout to restart the sched scan */
-			wpa_s->sched_scan_timed_out = 1;
-			wpa_s->prev_sched_ssid = NULL;
-			wpa_supplicant_cancel_sched_scan(wpa_s);
+			wpas_scan_restart_sched_scan(wpa_s);
 		}
 		return 0;
 	}
@@ -8622,12 +8662,8 @@ static int wpas_ctrl_iface_mac_rand_scan(struct wpa_supplicant *wpa_s,
 		wpas_mac_addr_rand_scan_set(wpa_s, MAC_ADDR_RAND_SCHED_SCAN,
 					    addr, mask);
 
-		if (wpa_s->sched_scanning && !wpa_s->pno) {
-			/* simulate timeout to restart the sched scan */
-			wpa_s->sched_scan_timed_out = 1;
-			wpa_s->prev_sched_ssid = NULL;
-			wpa_supplicant_cancel_sched_scan(wpa_s);
-		}
+		if (wpa_s->sched_scanning && !wpa_s->pno)
+			wpas_scan_restart_sched_scan(wpa_s);
 	}
 
 	if (type & MAC_ADDR_RAND_PNO) {
@@ -9127,16 +9163,7 @@ char * wpa_supplicant_ctrl_iface_process(struct wpa_supplicant *wpa_s,
 		reply_len = wpa_supplicant_ctrl_iface_list_networks(
 			wpa_s, NULL, reply, reply_size);
 	} else if (os_strcmp(buf, "DISCONNECT") == 0) {
-#ifdef CONFIG_SME
-		wpa_s->sme.prev_bssid_set = 0;
-#endif /* CONFIG_SME */
-		wpa_s->reassociate = 0;
-		wpa_s->disconnected = 1;
-		wpa_supplicant_cancel_sched_scan(wpa_s);
-		wpa_supplicant_cancel_scan(wpa_s);
-		wpa_supplicant_deauthenticate(wpa_s,
-					      WLAN_REASON_DEAUTH_LEAVING);
-		eloop_cancel_timeout(wpas_network_reenabled, wpa_s, NULL);
+		wpas_request_disconnection(wpa_s);
 	} else if (os_strcmp(buf, "SCAN") == 0) {
 		wpas_ctrl_scan(wpa_s, NULL, reply, reply_size, &reply_len);
 	} else if (os_strncmp(buf, "SCAN ", 5) == 0) {
